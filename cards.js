@@ -1,12 +1,14 @@
 // NutriLabel recipe builder — recipe cards (Modernist Cuisine style) linked like a flow.
 // The final recipe is the main card; every sub-recipe row links to its own card.
 (function () {
-  const CARDW = 460, GAPX = 140, GAPY = 36;
+  const CARDW = 540, GAPX = 140, GAPY = 36;
   const COLORS = ['#3b82f6', '#ef4444', '#8b5cf6', '#f59e0b', '#14b8a6', '#ec4899', '#f97316', '#6366f1'];
   const $ = s => document.querySelector(s);
   const vpEl = $('#vp'), worldEl = $('#world'), linksEl = $('#links'), cardsEl = $('#cards');
 
   let S, calc, hist;
+  const fwErr = {}; // card id -> message while the typed final weight is invalid
+  const fwStart = {}; // card id -> yieldLoss when editing began, restored if the entry is invalid
 
   function fromSample() {
     const s = JSON.parse(JSON.stringify(NL.SAMPLE));
@@ -17,6 +19,10 @@
     return s;
   }
   const A = id => S.asm[id];
+  const ROOT_COLOR = '#0f766e';
+  // The final card is optional: S.root is null until the chef marks a card as Final.
+  const colorOf = id => id === S.root ? ROOT_COLOR : (A(id)?.color || '#94a3b8');
+  const hasFinal = () => !!(S.root && A(S.root));
   const subIdOf = ref => ref.startsWith('asm:') ? ref.slice(4) : null;
   const parentsOf = id => Object.entries(S.asm).flatMap(([pid, a]) => a.items.filter(it => it.ref === 'asm:' + id).map(it => ({ pid, amount: it.amount })));
   function descendants(id, acc = new Set()) {
@@ -32,7 +38,8 @@
     drawLinks();
     drawTree();
     drawNut();
-    $('#recipeTitle').textContent = A(S.root).name;
+    $('#recipeTitle').textContent = hasFinal() ? A(S.root).name : (S.draftName || 'Untitled recipe');
+    $('#emptyHint').hidden = Object.keys(S.asm).length > 0;
     wb.live(S);
   }
   const renderKeep = () => NL.keepFocus(render);
@@ -40,41 +47,55 @@
   function cardHTML(id) {
     const a = A(id), c = calc[id], isRoot = id === S.root;
     const parents = parentsOf(id);
+    const kind = `<div class="rc-kind" title="Is this the final recipe or a sub-recipe?"><button class="${isRoot ? 'on' : ''}" data-kind="final:${id}">Final</button><button class="${isRoot ? '' : 'on'}" data-kind="sub:${id}">Sub-recipe</button></div>`;
     const kicker = isRoot ? 'Final recipe · per portion'
       : parents.length ? 'Sub-recipe · used in ' + parents.map(p => `<a data-goto="${p.pid}">${NL.esc(A(p.pid).name)}</a> (${p.amount} g)`).join(', ')
         : 'Sub-recipe · not used yet. Drag the ● on the left onto a recipe to link it';
+    const bset = baseSet(a), baseAmt = baseTotal(a), bname = baseLabel(a, bset);
     const rows = a.items.map((it, idx) => {
       const sid = subIdOf(it.ref);
-      const pct = `<td class="r pc">${NL.pct(+it.amount || 0, c.batch)}</td>`;
+      const inBase = bset.includes(idx), bpct = baseAmt > 0 ? +((+it.amount || 0) / baseAmt * 100).toFixed(2) : null;
+      const bbtn = `<button class="bk-b ${inBase ? 'on' : ''}" data-togbase="${id}:${idx}" title="${inBase ? 'Part of the base. Click to remove it from the base' : 'Click to add this ingredient to the base (100%)'}">B</button>`;
+      const bk = inBase
+        ? `<td class="r bk base"><span class="bk-base" title="Share of the base (${NL.esc(bname)})">${bpct == null ? '—' : NL.fmt(bpct, 2) + '%'}</span>${bbtn}</td>`
+        : `<td class="r bk"><span class="bk-in"><input class="num" inputmode="decimal" data-fk="bk-${id}-${idx}" data-bk="${id}:${idx}" value="${bpct ?? ''}" ${baseAmt > 0 ? 'title="Baker %: type a % to set this weight from the base"' : `disabled placeholder="—" title="${bset.length ? 'The base has no weight yet' : 'Press B on an ingredient to choose the base'}"`}>%</span>${bbtn}</td>`;
+      const pct = `<td class="r pc">${NL.pct(+it.amount || 0, c.batch)}</td>${bk}`;
       const amt = `<td class="r w"><input class="num" inputmode="decimal" data-fk="amt-${id}-${idx}" data-amt="${id}:${idx}" value="${it.amount}"><span class="u">g</span></td>`;
       const del = `<td class="x"><button class="rc-del" data-delrow="${id}:${idx}" title="Remove">×</button></td>`;
       if (sid && A(sid)) {
-        return `<tr class="sub" data-sub="${sid}" style="--rc:${A(sid).color}"><td><span class="rc-sublink" data-goto="${sid}">${NL.esc(A(sid).name)}</span><span class="rc-see" data-goto="${sid}">see recipe →</span></td>${amt}${pct}${del}</tr>`;
+        return `<tr class="sub" data-sub="${sid}" style="--rc:${colorOf(sid)}"><td><span class="rc-sublink" data-goto="${sid}">${NL.esc(A(sid).name)}</span><span class="rc-see" data-goto="${sid}">see recipe →</span></td>${amt}${pct}${del}</tr>`;
       }
       const ing = NL.ingMap[it.ref.slice(4)];
       return `<tr><td>${NL.esc(ing?.name || it.ref)}<span class="rc-vendor">${NL.esc(ing?.vendor || '')}</span></td>${amt}${pct}${del}</tr>`;
-    }).join('') || `<tr class="rc-empty"><td colspan="4">No ingredients yet — use the buttons below or drag from the library</td></tr>`;
+    }).join('') || `<tr class="rc-empty"><td colspan="5">No ingredients yet — use the buttons below or drag from the library</td></tr>`;
     const kcal = Math.round(c.perG[0] * (isRoot ? c.yielded : 100));
-    return `<div class="rcard ${isRoot ? 'final' : ''} ${a.collapsed ? 'rc-collapsed' : ''} ${!isRoot && !parents.length ? 'orphan' : ''}" data-id="${id}" style="left:${a.x}px;top:${a.y}px;--c:${a.color}">
+    return `<div class="rcard ${isRoot ? 'final' : ''} ${a.collapsed ? 'rc-collapsed' : ''} ${!isRoot && !parents.length ? 'orphan' : ''}" data-id="${id}" style="left:${a.x}px;top:${a.y}px;--c:${colorOf(id)}">
       ${isRoot ? '' : `<span class="port" data-port="${id}" title="Drag onto the recipe that uses this card"></span>`}
       <div class="rc-top" data-drag>
-        <div class="rc-kicker">${kicker}</div>
+        <div class="rc-kick-row"><div class="rc-kicker">${kicker}</div>${kind}</div>
         <div class="rc-titlebar">
           <input class="rc-title" data-fk="title-${id}" data-title="${id}" value="${NL.esc(a.name)}">
           <button class="rc-ib" data-collapse="${id}" title="${a.collapsed ? 'Expand' : 'Collapse'}">${a.collapsed ? '▸' : '▾'}</button>
-          ${isRoot ? '' : `<button class="rc-ib del" data-delcard="${id}" title="Delete sub-recipe">🗑</button>`}
+          <button class="rc-ib" data-copycard="${id}" title="Copy this card${descendants(id).size ? ' (with its sub-recipe cards)' : ''}. Paste into any tab with 📋 Paste card or Ctrl+V">⧉</button>
+          <button class="rc-ib del" data-delcard="${id}" title="Delete this card">🗑</button>
         </div>
         <div class="rc-stats">
           <div><b>${NL.fmt(c.batch)} g</b><span>${isRoot ? 'Portion' : 'Batch'}</span></div>
           <div><b>${NL.fmt(c.yielded)} g</b><span>Yield</span></div>
-          <div><b>${+a.yieldLoss || 0}% / ${NL.yieldPct(a.yieldLoss)}%</b><span>Loss / Yield</span></div>
+          <div><b>${NL.fmt(+a.yieldLoss || 0, 1)}% / ${NL.fmt(NL.yieldPct(a.yieldLoss), 1)}%</b><span>Loss / Yield</span></div>
           <div><b>${kcal}</b><span>${isRoot ? 'kcal / portion' : 'kcal / 100 g'}</span></div>
         </div>
       </div>
       <div class="rc-body">
-        <table class="rc-tbl"><thead><tr><th>Ingredient</th><th class="r">Weight</th><th class="r">%</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+        <table class="rc-tbl"><thead><tr><th>Ingredient</th><th class="r">Weight</th><th class="r">Relative %</th><th class="r" title="Baker's percentage: weight relative to the base ingredient (100%)">Baker %</th><th></th></tr></thead><tbody>${rows}</tbody>
+          ${a.items.length ? `<tfoot>${bset.length > 1 || a.baseName ? `<tr class="rc-base"><td><span class="rc-base-nm" data-basename="${id}" title="Click to rename the base">${NL.esc(bname)}${a.baseName ? ' <small>(Base)</small>' : ''}</span></td><td class="r w">${NL.fmt(baseAmt, 2)}<span class="u">g</span></td><td class="r pc">${NL.pct(baseAmt, c.batch)}</td><td class="r bk">100%</td><td class="x"><button class="rc-del rc-base-x" data-delbase="${id}" title="Remove this base (clears its name and B marks)">×</button></td></tr>` : ''}<tr class="rc-tot"><td>Total</td><td class="r w">${NL.fmt(c.batch, 2)}<span class="u">g</span></td><td class="r pc">100%</td><td class="r bk" title="Total formula percentage">${baseAmt > 0 ? NL.fmt(c.batch / baseAmt * 100, 1) + '%' : `<span class="bk-hint">${bset.length ? 'base has no weight' : 'press B to pick a base'}</span>`}</td><td></td></tr></tfoot>` : ''}</table>
+        ${c.batch > 0 ? `<div class="rc-bscale"><span class="rc-sc">Scale by yield <input class="num" inputmode="decimal" data-fk="ws-${id}" data-wscale="${id}" value="${+c.yielded.toFixed(2)}" title="Type the finished weight you need after cooking loss; the batch is calculated as yield ÷ (1 − loss %)"> g
+            <span class="faint">${+a.yieldLoss ? `→ batch ${NL.fmt(c.batch, 2)} g at ${NL.fmt(+a.yieldLoss, 1)}% loss` : '(no cooking loss)'}</span></span>
+          ${bset.length ? `<span class="rc-sc">Scale by base <b>${NL.esc(bname)}</b> <input class="num" inputmode="decimal" data-fk="bs-${id}" data-bscale="${id}" value="${+baseAmt.toFixed(2)}" title="Type the base weight you want; every Baker % is kept"> g</span>` : ''}
+          <span class="faint">ratios and % stay the same</span></div>` : ''}
         <div class="rc-add">
           <button data-addi="${id}">+ Ingredient</button>
+          <button data-basename="${id}" title="${a.baseName ? 'Rename the base' : 'Name the base (e.g. Total Flour), then press B on each ingredient that belongs to it'}">${a.baseName ? '✎ Rename base' : '+ Base'}</button>
           <button class="s" data-adds="${id}">＋ New sub-recipe</button>
           <button class="s" data-addl="${id}">↳ Link existing sub-recipe</button>
         </div>
@@ -83,7 +104,11 @@
           <li>Add raw ingredients with <b>+ Ingredient</b>, or drag them from the library onto this card.</li>
           <li>Need a component (a sauce, a broth)? Click <b>＋ New sub-recipe</b>. It opens its own linked card where you add its ingredients.</li>
           <li>Type the weight on each row. Batch, yield, % and nutrition update as you type.</li></ol></div>` : ''}
-        <div class="rc-sec rc-yl">Yield loss <input class="num" inputmode="decimal" data-fk="yl-${id}" data-yl="${id}" value="${a.yieldLoss || 0}"> % <span class="rc-yp">Yield <input class="num" inputmode="decimal" data-fk="yp-${id}" data-yp="${id}" value="${NL.yieldPct(a.yieldLoss)}"> %</span></div>
+        <div class="rc-sec rc-fw ${fwErr[id] ? 'bad' : ''}">
+          <label>${isRoot ? 'Final portion weight' : 'Final weight after cooking'} <input class="num" inputmode="decimal" data-fk="fw-${id}" data-fw="${id}" value="${+c.yielded.toFixed(1)}" placeholder="${+c.batch.toFixed(1)}"> g</label>
+          <span class="rc-fw-res">from ${NL.fmt(c.batch)} g · <b>Yield ${NL.fmt(NL.yieldPct(a.yieldLoss), 1)}%</b> · Loss ${NL.fmt(+a.yieldLoss || 0, 1)}% (${NL.fmt(c.lossG)} g)</span>
+          ${fwErr[id] ? `<div class="rc-fw-err">⚠ ${NL.esc(fwErr[id])}</div>` : ''}
+        </div>
         <div class="rc-sec">
           <div class="rc-h">Procedure <button class="rc-mini" data-addstep="${id}">+ Step</button></div>
           <ol class="rc-steps">${(a.steps || []).map((s, i) => `<li><input data-fk="st-${id}-${i}" data-step="${id}:${i}" value="${NL.esc(s)}" placeholder="Describe this step…"><button class="rc-del" data-delstep="${id}:${i}">×</button></li>`).join('')}</ol>
@@ -109,10 +134,12 @@
         const ch = A(sid), x2 = ch.x, y2 = ch.y + 30;
         const dx = Math.max(60, Math.abs(x2 - x1) / 2);
         const back = x2 < x1; // child sits to the left: loop around
-        const d = back
-          ? `M${x1},${y1} C${x1 + 80},${y1} ${x2 - 80},${y2} ${x2},${y2}`
-          : `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
-        out += `<path class="link" d="${d}" stroke="${ch.color}"/><circle class="link-dot" cx="${x1}" cy="${y1}" r="5" fill="${ch.color}"/><circle class="link-dot" cx="${x2}" cy="${y2}" r="5" fill="${ch.color}"/>`;
+        const [c1, c2] = back ? [x1 + 80, x2 - 80] : [x1 + dx, x2 - dx];
+        const d = `M${x1},${y1} C${c1},${y1} ${c2},${y2} ${x2},${y2}`;
+        const mx = (x1 + 3 * c1 + 3 * c2 + x2) / 8, my = (y1 + y2) / 2; // bezier point at t = 0.5
+        const col = colorOf(sid);
+        out += `<g class="lk" data-link="${pid}:${sid}"><path class="link" d="${d}" stroke="${col}"/><path class="link-hit" d="${d}"/><circle class="link-dot" cx="${x1}" cy="${y1}" r="5" fill="${col}"/><circle class="link-dot" cx="${x2}" cy="${y2}" r="5" fill="${col}"/>
+          <g class="lk-cut" data-cut="${pid}:${sid}" transform="translate(${mx},${my})" style="--lc:${col}"><title>Remove link: ${NL.esc(A(sid).name)} → ${NL.esc(a.name)}</title><circle r="13"/><text y="1">✂</text></g></g>`;
       });
     }
     linksEl.innerHTML = out;
@@ -125,18 +152,21 @@
       const nIng = a.items.filter(it => it.ref.startsWith('ing:')).length;
       const kids = a.items.map(it => subIdOf(it.ref)).filter(s => s && A(s));
       return `<div class="tr-item ${id === S.root ? 'root' : ''}" style="padding-left:${6 + depth * 14}px" data-goto="${id}">
-        <span class="sw" style="background:${a.color}"></span><span class="nm">${NL.esc(a.name)}</span><span class="faint">${nIng} ing</span></div>` +
+        <span class="sw" style="background:${colorOf(id)}"></span><span class="nm">${NL.esc(a.name)}</span><span class="faint">${nIng} ing</span></div>` +
         (depth < 12 ? kids.map(k => item(k, depth + 1)).join('') : '');
     };
-    let html = item(S.root, 0);
-    const orphans = Object.keys(S.asm).filter(id => !seen.has(id));
-    if (orphans.length) html += `<div class="tr-sep">Not used in the recipe</div>` + orphans.map(id => item(id, 0)).join('');
+    let html = hasFinal() ? item(S.root, 0) : '', extra = '';
+    // unlinked cards: list top-level ones first (their sub-recipes nest under them), then anything left
+    for (const id of Object.keys(S.asm)) if (!seen.has(id) && !parentsOf(id).length) extra += item(id, 0);
+    for (const id of Object.keys(S.asm)) if (!seen.has(id)) extra += item(id, 0);
+    if (extra) html += `<div class="tr-sep">${hasFinal() ? 'Not used in the recipe' : 'No final card yet. Use the Final toggle on a card'}</div>` + extra;
+    if (!html) html = '<div class="tr-sep">No cards yet</div>';
     $('#tree').innerHTML = html;
   }
   function drawNut() {
     const nut = $('#nut');
     if (!$('#cmain').classList.contains('show-nut')) { nut.innerHTML = ''; return; }
-    nut.innerHTML = `<h3>${NL.esc(A(S.root).name)}</h3>${NL.labelHTML(S, calc, S.root)}`;
+    nut.innerHTML = hasFinal() ? `<h3>${NL.esc(A(S.root).name)}</h3>${NL.labelHTML(S, calc, S.root)}` : '<div class="nut-empty">Mark a card as <b>Final</b> to see its nutrition label.</div>';
   }
   function drawLib() {
     const q = $('#libSearch').value.trim().toLowerCase();
@@ -169,12 +199,14 @@
         if (s && A(s)) place(s, d + 1, a.y + 150 + idx * 34 - 30);
       });
     };
-    place(S.root, 0, 0);
+    if (hasFinal()) place(S.root, 0, 0);
+    else for (const id of Object.keys(S.asm)) if (!parentsOf(id).length) place(id, 0, 0);
     let y = Math.max(0, ...colBottom.filter(v => v != null)) + 80;
     for (const id of Object.keys(S.asm)) if (!placed.has(id)) { A(id).x = CARDW + GAPX; A(id).y = y; y += H[id] + GAPY; }
     render();
   }
   function bounds() {
+    if (!Object.keys(S.asm).length) return { x: 0, y: 0, w: 900, h: 600 };
     const H = heights(); let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const [id, a] of Object.entries(S.asm)) { x0 = Math.min(x0, a.x); y0 = Math.min(y0, a.y); x1 = Math.max(x1, a.x + CARDW + 20); y1 = Math.max(y1, a.y + (H[id] || 300)); }
     return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
@@ -196,6 +228,28 @@
     render(); commit();
     if (focus) focusAmt(id, a.items.length - 1);
   }
+  // Chefs enter the weighed final weight; yield loss is derived from it (only yieldLoss is stored).
+  function setFinalWeight(id, raw) {
+    const batch = calc[id].batch, v = raw.trim();
+    if (v === '') { delete fwErr[id]; if (id in fwStart) A(id).yieldLoss = fwStart[id]; return; }
+    const fw = Number(v.replace(',', '.'));
+    let err = '';
+    if (!isFinite(fw)) err = 'Enter a number in grams';
+    else if (batch <= 0) err = 'Add ingredients with weights first';
+    else if (fw <= 0) err = 'Final weight must be more than 0 g';
+    else if (fw > batch + 1e-9) err = `Final weight (${NL.fmt(fw)} g) can't be more than the starting weight (${NL.fmt(batch)} g)`;
+    if (err) { fwErr[id] = err; if (id in fwStart) A(id).yieldLoss = fwStart[id]; return; }
+    delete fwErr[id];
+    A(id).yieldLoss = (1 - fw / batch) * 100;
+  }
+  // Baker's math: the base item is the one flagged `base`, else the first item with a weight.
+  // Baker's math: the base is every item the chef flagged with B (their weights add up to 100%).
+  const baseSet = a => a.items.map((it, k) => it.base ? k : -1).filter(k => k >= 0);
+  const baseTotal = a => baseSet(a).reduce((s, k) => s + (+a.items[k].amount || 0), 0);
+  const baseLabel = (a, set = baseSet(a)) => a.baseName || (set.length === 1 ? itemName(a.items[set[0]]) : 'Total base');
+  const itemName = it => { const s = subIdOf(it.ref); return s ? (A(s)?.name || s) : (NL.ingMap[it.ref.slice(4)]?.name || it.ref); };
+  const round2 = v => Math.round(v * 100) / 100;
+  const bscaleStart = {}; // card id -> amounts when scaling began, so each keystroke scales from the original
   function focusAmt(id, idx) { const i = cardsEl.querySelector(`[data-amt="${id}:${idx}"]`); if (i) { i.focus(); i.select(); } }
   function newSub(pid) {
     const p = A(pid), nid = NL.uid('s');
@@ -237,17 +291,158 @@
     addItem(parent, 'asm:' + child);
     NL.toast(`Linked. Set how many grams of "${A(child).name}" go into "${A(parent).name}"`);
   }
+  // ---------- copy / paste cards (clipboard lives in localStorage so it works across tabs) ----------
+  const CLIP = 'nlv2_card_clipboard';
+  const readClip = () => { try { return JSON.parse(localStorage.getItem(CLIP)); } catch { return null; } };
+  function updatePasteBtn() {
+    const c = readClip(), btn = $('#pasteCard');
+    btn.hidden = !c?.cards;
+    if (c?.cards) btn.title = `Paste "${c.cards[c.top].name}"${Object.keys(c.cards).length > 1 ? ` with ${Object.keys(c.cards).length - 1} sub-recipe card(s)` : ''} as a new unlinked card (Ctrl+V)`;
+  }
+  function copyCard(id) {
+    const ids = [id, ...descendants(id)];
+    const cards = Object.fromEntries(ids.map(k => [k, JSON.parse(JSON.stringify(A(k)))]));
+    try { localStorage.setItem(CLIP, JSON.stringify({ top: id, cards })); } catch { return NL.toast('Could not copy the card'); }
+    updatePasteBtn();
+    NL.toast(`Copied "${A(id).name}"${ids.length > 1 ? ` with ${ids.length - 1} sub-recipe card(s)` : ''}. Paste with 📋 Paste card or Ctrl+V`);
+  }
+  function pasteCard() {
+    const clip = readClip(); if (!clip?.cards) return NL.toast('Nothing copied yet');
+    const map = Object.fromEntries(Object.keys(clip.cards).map(k => [k, NL.uid('s')]));
+    const top = clip.cards[clip.top], r = vpEl.getBoundingClientRect(), ctr = vp.toWorld(r.left + r.width / 2, r.top + r.height / 3);
+    const dx = Math.round(ctr.x - CARDW / 2 - (top.x || 0)), dy = Math.round(ctr.y - 60 - (top.y || 0));
+    const used = new Set(Object.values(S.asm).map(a => a.color));
+    for (const [k, card] of Object.entries(clip.cards)) {
+      const n = JSON.parse(JSON.stringify(card)); delete n.kind;
+      n.items = n.items.filter(it => !subIdOf(it.ref) || map[subIdOf(it.ref)]).map(it => { const s = subIdOf(it.ref); return s ? { ...it, ref: 'asm:' + map[s] } : it; });
+      if (k === clip.top) n.name = n.name + ' (copy)';
+      if (!n.color || n.color === '#0f766e') n.color = COLORS.find(c => !used.has(c)) || COLORS[Object.keys(S.asm).length % COLORS.length];
+      used.add(n.color);
+      n.x = (n.x || 0) + dx; n.y = (n.y || 0) + dy;
+      S.asm[map[k]] = n;
+    }
+    render(); commit(); goto(map[clip.top]);
+    NL.toast('Card pasted. Drag its ● onto a recipe to use it');
+  }
+  addEventListener('storage', e => { if (e.key === CLIP) updatePasteBtn(); });
+
+  // ---------- compare recipes / versions ----------
+  function recipeStats(state) {
+    if (!state.root || !state.asm[state.root]) return null;
+    const c = NL.calc(state), rc = c[state.root];
+    return {
+      batch: rc.batch, yielded: rc.yielded, loss: +state.asm[state.root].yieldLoss || 0,
+      kcal100: rc.perG[0] * 100, cards: Object.keys(state.asm).length,
+      nut: NL.NUTRIENTS.map((_, i) => rc.perG[i] * rc.yielded),
+      ing: Object.fromEntries(NL.flatten(state, c, state.root)),
+    };
+  }
+  function openCompare() {
+    clearTimeout(typingT); commit();
+    const all = wb.all(), tabs = all.filter(t => t.state.root && t.state.asm[t.state.root]), skipped = all.filter(t => !tabs.includes(t));
+    if (tabs.length < 2) return NL.toast(skipped.length ? 'Compare needs two recipes with a Final card. Use the Final toggle on a card' : 'Make a second tab first (＋ New recipe or ⎘ New Version), then compare');
+    const pick = new Set(tabs.slice(0, 4).map(t => t.id));
+    let baseId = tabs[0].id, diffOnly = false;
+    const ov = document.createElement('div'); ov.className = 'cmp-ov';
+    document.body.appendChild(ov);
+    const esc = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+    const close = () => { ov.remove(); removeEventListener('keydown', esc, true); };
+    addEventListener('keydown', esc, true);
+    const near = (a, b, d) => Math.abs((a ?? 0) - (b ?? 0)) < 10 ** -d / 2;
+    function delta(v, b, unit, d) {
+      if (near(v, b, d)) return '<span class="cmp-same">=</span>';
+      const dv = v - b, pct = b ? ` (${dv > 0 ? '+' : ''}${NL.fmt(dv / b * 100, 1)}%)` : '';
+      return `<span class="cmp-d ${dv > 0 ? 'up' : 'dn'}">${dv > 0 ? '▲ +' : '▼ '}${NL.fmt(dv, d)}${unit}${pct}</span>`;
+    }
+    function draw() {
+      const cols = tabs.filter(t => pick.has(t.id));
+      if (!pick.has(baseId)) baseId = cols[0]?.id;
+      cols.sort((a, b) => (b.id === baseId) - (a.id === baseId));
+      const st = Object.fromEntries(cols.map(t => [t.id, recipeStats(t.state)]));
+      const base = st[baseId];
+      const row = (label, get, unit = '', d = 1) => {
+        const vals = cols.map(t => get(st[t.id]));
+        const same = vals.every(v => v != null && near(v, vals[0], d)) || vals.every(v => v == null);
+        if (diffOnly && same) return '';
+        const bv = base ? get(base) : null;
+        return `<tr class="${same ? 'same' : 'diff'}"><th>${label}</th>${cols.map((t, i) => {
+          const v = vals[i];
+          const main = v == null ? '<span class="cmp-na">—</span>' : `<b>${NL.fmt(v, d)}${unit}</b>`;
+          const sub = t.id === baseId ? '' : v == null ? (bv == null ? '' : '<span class="cmp-d dn">not used</span>') : bv == null ? '<span class="cmp-d up">new</span>' : delta(v, bv, unit, d);
+          return `<td>${main}${sub ? `<div>${sub}</div>` : ''}</td>`;
+        }).join('')}</tr>`;
+      };
+      const ingIds = [...new Set(cols.flatMap(t => Object.keys(st[t.id].ing)))].sort((a, b) => (base?.ing[b] || 0) - (base?.ing[a] || 0));
+      const sec = t => `<tr><td class="cmp-h" colspan="${cols.length + 1}">${t}</td></tr>`;
+      const body = !cols.length ? '<div class="cmp-empty">Tick at least one recipe above.</div>' : `<div class="cmp-scroll"><table class="cmp-tbl">
+        <thead><tr><th></th>${cols.map(t => `<th>${NL.esc(t.name)}${t.id === baseId ? '<small>baseline</small>' : `<button class="cmp-mk" data-base="${t.id}" title="Compare everything against this recipe">set as baseline</button>`}</th>`).join('')}</tr></thead>
+        <tbody>${sec('Summary')}
+          ${row('Portion / batch weight', s => s.batch, ' g')}${row('Final weight (yield)', s => s.yielded, ' g')}${row('Cooking loss', s => s.loss, '%')}
+          ${row('Calories per portion', s => s.nut[0], ' kcal', 0)}${row('Calories per 100 g', s => s.kcal100, ' kcal', 0)}${row('Cards in recipe', s => s.cards, '', 0)}
+          ${sec('Nutrition per portion')}
+          ${NL.NUTRIENTS.slice(1).map((n, k) => row(n.label, s => s.nut[k + 1], ' ' + n.unit, n.unit === 'mg' ? 0 : 1)).join('')}
+          ${sec('Raw ingredients per portion')}
+          ${ingIds.map(iid => row(NL.esc(NL.ingMap[iid]?.name || iid), s => s.ing[iid] ?? null, ' g', 2)).join('')}</tbody>
+      </table></div>`;
+      ov.innerHTML = `<div class="cmp">
+        <div class="cmp-top"><b>⇄ Compare recipes</b><span class="spacer"></span>
+          <label class="cmp-opt"><input type="checkbox" id="cmpDiff" ${diffOnly ? 'checked' : ''}> Only show differences</label>
+          <button class="btn ghost cmp-x" title="Close (Esc)">×</button></div>
+        <div class="cmp-pick">${tabs.map(t => `<label class="cmp-chip ${pick.has(t.id) ? 'on' : ''}"><input type="checkbox" data-pick="${t.id}" ${pick.has(t.id) ? 'checked' : ''}>${NL.esc(t.name)}${t.active ? ' <small>(open)</small>' : ''}</label>`).join('')}</div>
+        ${body}
+        ${skipped.length ? `<div class="cmp-foot">Not shown (no Final card yet): ${skipped.map(t => NL.esc(t.name)).join(', ')}</div>` : ''}
+        <div class="cmp-foot">▲ / ▼ show the difference from the baseline column. Ingredient grams are the raw amounts that end up in one portion, including those inside sub-recipes.</div>
+      </div>`;
+      ov.querySelector('.cmp-x').onclick = close;
+      ov.querySelector('#cmpDiff').onchange = e => { diffOnly = e.target.checked; draw(); };
+      ov.querySelectorAll('[data-pick]').forEach(cb => cb.onchange = () => { cb.checked ? pick.add(cb.dataset.pick) : pick.delete(cb.dataset.pick); draw(); });
+      ov.querySelectorAll('[data-base]').forEach(b => b.onclick = () => { baseId = b.dataset.base; draw(); });
+    }
+    ov.addEventListener('pointerdown', e => { if (e.target === ov) close(); });
+    draw();
+  }
+
   function deleteCard(id) {
     const ps = parentsOf(id);
     if (!confirm(`Delete "${A(id).name}"?${ps.length ? `\nIt will be removed from: ${ps.map(p => A(p.pid).name).join(', ')}` : ''}`)) return;
     delete S.asm[id];
+    if (S.root === id) S.root = null;
     for (const a of Object.values(S.asm)) a.items = a.items.filter(it => it.ref !== 'asm:' + id);
+    render(); commit();
+  }
+  // ---------- remove a connection (hover a line, click its scissors) ----------
+  function unlink(pid, sid) {
+    A(pid).items = A(pid).items.filter(it => it.ref !== 'asm:' + sid);
+    render(); commit();
+    NL.toast(`Unlinked "${A(sid).name}" from "${A(pid).name}". The card is kept. Ctrl+Z to undo`);
+  }
+
+  function nextColor() {
+    const used = new Set(Object.values(S.asm).map(a => a.color));
+    return COLORS.find(c => !used.has(c)) || COLORS[Object.keys(S.asm).length % COLORS.length];
+  }
+  function setKind(id, kind) {
+    const a = A(id);
+    if (kind === 'final') {
+      if (S.root === id) return;
+      const ps = parentsOf(id);
+      if (ps.length) return NL.toast(`"${a.name}" is used inside ${ps.map(p => '"' + A(p.pid).name + '"').join(', ')}. Remove it there first, then make it Final`);
+      const prev = hasFinal() ? S.root : null;
+      if (prev && (!A(prev).color || A(prev).color === ROOT_COLOR)) A(prev).color = nextColor();
+      S.root = id;
+      NL.toast(`"${a.name}" is now the final recipe${prev ? `. "${A(prev).name}" is now a sub-recipe` : ''}`);
+    } else {
+      if (S.root !== id) return;
+      if (!a.color || a.color === ROOT_COLOR) a.color = nextColor();
+      S.root = null;
+      NL.toast(`"${a.name}" is now a sub-recipe. Mark any card as Final when you're ready`);
+    }
     render(); commit();
   }
   function openPicker(id, anchor, mode) {
     const r = anchor.getBoundingClientRect();
     const subs = Object.entries(S.asm).filter(([sid]) => sid !== S.root && !wouldCycle(id, sid) && !A(id).items.some(it => it.ref === 'asm:' + sid))
-      .map(([sid, a]) => ({ value: 'asm:' + sid, label: a.name, color: a.color, sub: 'sub-recipe' }));
+      .map(([sid, a]) => ({ value: 'asm:' + sid, label: a.name, color: colorOf(sid), sub: 'sub-recipe' }));
     const groups = mode === 'link'
       ? [{ label: 'Existing sub-recipes', items: subs }, { label: 'Create', items: [{ value: 'new-sub', label: '＋ New sub-recipe', color: '#7c5cff', always: true }] }]
       : [{ label: 'Sub-recipes', items: subs }, ...NL.ingredientGroups()];
@@ -264,7 +459,7 @@
     const port = e.target.closest('[data-port]');
     if (port && e.button === 0) {
       const id = port.dataset.port, a = A(id);
-      return NL.connectDrag({ e, vp, linksEl, from: { x: a.x, y: a.y + 30 }, color: a.color, targetSel: '.rcard', selfEl: port.closest('.rcard'), onDrop: t => linkCard(id, t.dataset.id) });
+      return NL.connectDrag({ e, vp, linksEl, from: { x: a.x, y: a.y + 30 }, color: colorOf(id), targetSel: '.rcard', selfEl: port.closest('.rcard'), onDrop: t => linkCard(id, t.dataset.id) });
     }
     const top = e.target.closest('[data-drag]'); if (!top || e.button !== 0) return;
     if (e.target.closest('input,button,textarea,a')) return;
@@ -285,19 +480,43 @@
     const d = e.target.dataset; if (!d) return;
     if (d.amt) { const [id, i] = d.amt.split(':'); A(id).items[+i].amount = e.target.value === '' ? 0 : +e.target.value || 0; renderKeep(); }
     else if (d.title) { A(d.title).name = e.target.value; renderKeep(); }
-    else if (d.yl) { A(d.yl).yieldLoss = +e.target.value || 0; renderKeep(); }
-    else if (d.yp) { if (e.target.value !== '') { A(d.yp).yieldLoss = NL.lossFromYield(e.target.value); renderKeep(); } }
+    else if (d.fw) { setFinalWeight(d.fw, e.target.value); renderKeep(); }
+    else if (d.bk) {
+      const [id, i] = d.bk.split(':'), a = A(id), base = baseTotal(a), v = e.target.value.trim();
+      if (base > 0 && v !== '' && isFinite(+v) && +v >= 0) { a.items[+i].amount = round2(base * +v / 100); renderKeep(); }
+    }
+    else if (d.bscale || d.wscale) {
+      const id = d.bscale || d.wscale, a = A(id), v = +e.target.value;
+      const snap = bscaleStart[id] || (bscaleStart[id] = a.items.map(it => +it.amount || 0));
+      // scale by yield: required batch = desired yield / (1 - loss), so the factor is taken against the snapshot's yield
+      const snapBase = d.bscale ? baseSet(a).reduce((s, k) => s + snap[k], 0) : snap.reduce((s, x) => s + x, 0) * (1 - Math.min(+a.yieldLoss || 0, 99.99) / 100);
+      if (e.target.value.trim() !== '' && isFinite(v) && v > 0 && snapBase > 0) { const f = v / snapBase; a.items.forEach((it, k) => { it.amount = round2(snap[k] * f); }); renderKeep(); }
+    }
     else if (d.step) { const [id, i] = d.step.split(':'); A(id).steps[+i] = e.target.value; }
     else if (d.notes) { A(d.notes).notes = e.target.value; }
   });
   // inputs are re-rendered while typing, so 'change' never fires: commit shortly after typing stops, and on blur
-  const isField = d => d && (d.amt || d.title || d.yl || d.yp || d.step || d.notes);
+  const isField = d => d && (d.amt || d.title || d.fw || d.bk || d.bscale || d.wscale || d.step || d.notes);
   let typingT;
   document.addEventListener('input', e => { if (isField(e.target.dataset)) { clearTimeout(typingT); typingT = setTimeout(commit, 600); } });
-  document.addEventListener('focusout', e => { if (isField(e.target.dataset)) commit(); });
+  document.addEventListener('focusin', e => {
+    if (NL.refocusing) return;
+    const id = e.target.dataset?.fw; if (id) fwStart[id] = A(id).yieldLoss || 0;
+    const sc = e.target.dataset?.bscale || e.target.dataset?.wscale; if (sc) delete bscaleStart[sc];
+  });
+  document.addEventListener('focusout', e => {
+    if (NL.refocusing) return;
+    const d = e.target.dataset;
+    if (d?.fw) {
+      if (e.target.value.trim() === '') render();
+      else if (fwErr[d.fw]) { NL.toast('Final weight not saved: ' + fwErr[d.fw]); delete fwErr[d.fw]; render(); }
+    }
+    if (d?.bscale || d?.wscale || d?.bk) { delete bscaleStart[d.bscale || d.wscale]; render(); }
+    if (isField(d)) commit();
+  });
   document.addEventListener('keydown', e => {
     const d = e.target.dataset;
-    if (e.key === 'Enter' && d && (d.amt || d.title || d.yl || d.yp)) e.target.blur();
+    if (e.key === 'Enter' && d && (d.amt || d.title || d.fw || d.bk || d.bscale || d.wscale)) e.target.blur();
     if (e.key === 'Enter' && d?.step) { const [id, i] = d.step.split(':'); A(id).steps.splice(+i + 1, 0, ''); render(); commit(); cardsEl.querySelector(`[data-step="${id}:${+i + 1}"]`)?.focus(); }
   });
 
@@ -305,11 +524,35 @@
     const t = e.target, q = s => t.closest(s);
     let b;
     if ((b = q('[data-goto]'))) return goto(b.dataset.goto);
+    if ((b = q('[data-togbase]'))) {
+      const [id, i] = b.dataset.togbase.split(':'), a = A(id), it = a.items[+i];
+      if (it.base) delete it.base; else it.base = true;
+      render(); commit(); return;
+    }
+    if ((b = q('[data-delbase]'))) {
+      const a = A(b.dataset.delbase);
+      delete a.baseName; a.items.forEach(it => delete it.base);
+      render(); commit(); NL.toast('Base removed. Press B on an ingredient to choose a new base'); return;
+    }
+    if ((b = q('[data-basename]'))) {
+      const a = A(b.dataset.basename);
+      NL.prompt('Name the base (e.g. Total Flour)', a.baseName || 'Total Flour').then(v => {
+        if (v == null) return;
+        if (v) a.baseName = v; else delete a.baseName;
+        render(); commit();
+        NL.toast(v ? `Press B on each ingredient that belongs to "${v}"` : 'Base name removed');
+      });
+      return;
+    }
     if ((b = q('[data-delrow]'))) { const [id, i] = b.dataset.delrow.split(':'); A(id).items.splice(+i, 1); render(); commit(); return; }
     if ((b = q('[data-addi]'))) return openPicker(b.dataset.addi, b, 'ing');
     if ((b = q('[data-addl]'))) return openPicker(b.dataset.addl, b, 'link');
     if ((b = q('[data-adds]'))) return newSub(b.dataset.adds);
     if ((b = q('[data-delcard]'))) return deleteCard(b.dataset.delcard);
+    if ((b = q('[data-copycard]'))) return copyCard(b.dataset.copycard);
+    if ((b = q('[data-cut]'))) { const [pid, sid] = b.dataset.cut.split(':'); return unlink(pid, sid); }
+    if ((b = q('[data-kind]'))) { const [k, id] = b.dataset.kind.split(':'); return setKind(id, k); }
+    if ((b = q('[data-emptyadd]'))) return addCard();
     if ((b = q('[data-collapse]'))) { const a = A(b.dataset.collapse); a.collapsed = !a.collapsed; render(); commit(); return; }
     if ((b = q('[data-addstep]'))) { const a = A(b.dataset.addstep); a.steps.push(''); render(); commit(); cardsEl.querySelector(`[data-step="${b.dataset.addstep}:${a.steps.length - 1}"]`)?.focus(); return; }
     if ((b = q('[data-delstep]'))) { const [id, i] = b.dataset.delstep.split(':'); A(id).steps.splice(+i, 1); render(); commit(); }
@@ -338,6 +581,7 @@
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? hist.redo() : hist.undo(); }
     else if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); hist.redo(); }
+    else if (mod && e.key.toLowerCase() === 'v' && readClip()?.cards && !document.querySelector('.cmp-ov, .nl-prompt-ov')) { e.preventDefault(); pasteCard(); }
     else if (e.key === 'f' || e.key === 'F') vp.fit(bounds());
   });
 
@@ -360,12 +604,20 @@
   };
   $('#newRecipe').onclick = () => newRecipe();
   $('#addCard').onclick = () => addCard();
+  $('#pasteCard').onclick = () => pasteCard();
+  $('#compare').onclick = () => openCompare();
+  // TEMP: reset-to-sample button (remove with #resetSample in index.html)
+  $('#resetSample').onclick = () => {
+    if (!confirm('Replace this tab with the original sample recipe? Other tabs are not touched. You can undo with Ctrl+Z.')) return;
+    S = fromSample(); arrange(); commit(); vp.fit(bounds(), 40, { min: 0.8, align: 'left' });
+    NL.toast('Sample recipe restored');
+  };
   $('#newIng').onclick = async () => { const i = await NL.ingredientForm(); if (i) NL.toast(`"${i.name}" added. Drag it from the list.`); };
   document.addEventListener('nl:ingredients', drawLib);
 
   // ---------- recipes as tabs (workbook) ----------
-  const nameOf = st => st.asm[st.root]?.name;
-  const blank = () => ({ root: 'final', asm: { final: { name: 'Untitled recipe ' + (wb.count() + 1), kind: 'final', items: [], yieldLoss: 0, steps: [], notes: '', color: '#0f766e', x: 0, y: 0 } } });
+  const nameOf = st => st.asm[st.root]?.name || st.draftName || 'Untitled recipe';
+  const blank = () => ({ root: null, draftName: 'Untitled recipe ' + (wb.count() + 1), asm: {} });
   const sample = () => Object.assign(fromSample(), { _arrange: true });
   function newRecipe() { wb.add(blank()); }
   window.NL_resetSample = () => { wb.add(sample()); NL.toast('Sample recipe opened in a new tab'); };
@@ -373,9 +625,10 @@
   function openState(state) {
     S = state;
     const needsArrange = S._arrange; delete S._arrange;
-    hist = NL.history(() => wb.save(S), () => S, s => { S = s; render(); });
     if (needsArrange) { arrange(); wb.save(S); } else render();
-    const empty = Object.keys(S.asm).length === 1 && !A(S.root).items.length;
+    hist = NL.history(() => wb.save(S), () => S, s => { S = s; render(); }); // after arranging, so undo never returns to unplaced cards
+    if (!Object.keys(S.asm).length) { vp.v.s = 1; vp.v.x = 0; vp.v.y = 0; vp.apply(); return; }
+    const empty = hasFinal() && Object.keys(S.asm).length === 1 && !A(S.root).items.length;
     if (empty) {
       const a = A(S.root); vp.v.s = 1; vp.v.x = 40 - a.x; vp.v.y = 30 - a.y; vp.apply();
       const t = cardsEl.querySelector(`[data-title="${S.root}"]`); t.focus(); t.select();
@@ -391,5 +644,6 @@
     onNew: newRecipe,
   });
   drawLib();
+  updatePasteBtn();
   openState(wb.current());
 })();

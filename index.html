@@ -18,8 +18,12 @@
     <button class="btn" id="fit">⤢ Fit</button>
     <button class="btn" id="toggleNut">Nutrition ▸</button>
     <button class="btn" id="addCard" title="Add an unconnected card to this recipe">＋ Add card</button>
+    <button class="btn" id="pasteCard" hidden>📋 Paste card</button>
+    <button class="btn" id="compare" title="Compare recipes and versions side by side">⇄ Compare</button>
     <button class="btn primary" id="newRecipe">＋ New recipe</button>
     <button class="btn" id="newVer">⎘ New Version</button>
+    <!-- TEMP: reset-to-sample button (remove this line and the #resetSample handler in cards.js) -->
+    <button class="btn ghost" id="resetSample" title="Replace this tab with the original sample recipe (undo with Ctrl+Z)">↺ Reset</button>
   </header>
   <main class="cmain" id="cmain">
     <aside class="side">
@@ -35,6 +39,11 @@
       </div>
     </aside>
     <section class="canvas" id="vp">
+      <div class="empty-hint" id="emptyHint" hidden>
+        <b>Blank recipe</b>
+        <span>Start with any card: a sub-recipe (a sauce, a broth) or the final dish. Use the <i>Final / Sub-recipe</i> switch on each card, and link cards by dragging their ● handle.</span>
+        <button class="btn primary" data-emptyadd>＋ Add card</button>
+      </div>
       <div class="world" id="world">
         <svg class="links" id="links"></svg>
         <div id="cards"></div>

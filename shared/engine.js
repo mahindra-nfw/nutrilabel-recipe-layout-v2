@@ -87,7 +87,7 @@ NL.calc = function (model) {
       const pg = perG(it.ref);
       if (pg) pg.forEach((v, i) => { total[i] += v * amt; });
     }
-    const loss = Math.min(Math.max(+a.yieldLoss || 0, 0), 95);
+    const loss = Math.min(Math.max(+a.yieldLoss || 0, 0), 99.99);
     const yielded = batch * (1 - loss / 100);
     visiting.delete(id);
     return (res[id] = { batch, yielded, lossG: batch - yielded, perG: total.map(v => yielded > 0 ? v / yielded : 0), total });
@@ -406,6 +406,7 @@ NL.workbook = function (o) {
     add,
     count: () => book.tabs.length,
     names: () => book.tabs.map(name),
+    all: () => book.tabs.map(t => ({ id: t.id, name: name(t), state: t.state, active: t.id === book.active })),
   };
 };
 NL.load = function (key) { try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : null; } catch { return null; } };
@@ -418,10 +419,12 @@ NL.lossFromYield = v => +(100 - Math.min(Math.max(+v || 0, 0), 100)).toFixed(2);
 NL.keepFocus = function (fn) {
   const a = document.activeElement, fk = a?.dataset?.fk, typed = a?.value;
   let s = null, e = null; try { s = a.selectionStart; e = a.selectionEnd; } catch { }
-  fn();
+  NL.refocusing = true; // focus events fired while re-rendering are not the user leaving/entering a field
+  try { fn(); } finally { if (!fk) NL.refocusing = false; }
   if (!fk) return;
   const n = document.querySelector(`[data-fk="${CSS.escape(fk)}"]`);
   if (n) { if (typed != null && 'value' in n) n.value = typed; n.focus(); try { if (s != null) n.setSelectionRange(s, e); } catch { } }
+  NL.refocusing = false;
 };
 
 NL.toast = function (msg) {

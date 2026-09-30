@@ -173,3 +173,4 @@ body.has-tabbar .tester { bottom: 50px; }
 .nif-n.sub span { padding-left: 8px; }
 .new-ing-btn { width: 100%; margin: 6px 0; justify-content: center; }
 @media (max-width: 520px) { .nif-row { flex-direction: column; gap: 0; } .nif-grid { grid-template-columns: 1fr 1fr; } }
+[hidden] { display: none !important; }
