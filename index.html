@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NutriLabel Recipe Builder</title>
+  <link rel="stylesheet" href="shared/base.css">
+  <link rel="stylesheet" href="cards.css">
+</head>
+<body data-layout="cards">
+  <header class="topbar">
+    <span class="brand">NutriLabel <small>Recipe Builder</small></span>
+    <span class="title" id="recipeTitle"></span>
+    <span class="spacer"></span>
+    <button class="btn ghost" id="undo" title="Undo (Ctrl+Z)">↶</button>
+    <button class="btn ghost" id="redo" title="Redo (Ctrl+Y)">↷</button>
+    <button class="btn" id="arrange">⇶ Auto-arrange</button>
+    <button class="btn" id="fit">⤢ Fit</button>
+    <button class="btn" id="toggleNut">Nutrition ▸</button>
+    <button class="btn" id="addCard" title="Add an unconnected card to this recipe">＋ Add card</button>
+    <button class="btn primary" id="newRecipe">＋ New recipe</button>
+    <button class="btn" id="newVer">⎘ New Version</button>
+  </header>
+  <main class="cmain" id="cmain">
+    <aside class="side">
+      <div class="side-block">
+        <div class="side-h">Recipe structure</div>
+        <div id="tree"></div>
+      </div>
+      <div class="side-block grow">
+        <div class="side-h">Ingredient library</div>
+        <input class="txt" id="libSearch" placeholder="Search, then drag onto a card…">
+        <button class="btn new-ing-btn" id="newIng">＋ New ingredient</button>
+        <div id="lib" class="lib"></div>
+      </div>
+    </aside>
+    <section class="canvas" id="vp">
+      <div class="world" id="world">
+        <svg class="links" id="links"></svg>
+        <div id="cards"></div>
+      </div>
+      <div class="zoombar">
+        <button id="zout">−</button><span class="zl" id="zl">100%</span><button id="zin">+</button>
+      </div>
+    </section>
+    <aside class="nut" id="nut"></aside>
+  </main>
+  <script src="shared/data.js"></script>
+  <script src="shared/engine.js"></script>
+  <script src="cards.js"></script>
+</body>
+</html>
