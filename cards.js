@@ -4,7 +4,9 @@
   const CARDW = 540, GAPX = 140, GAPY = 36;
   const COLORS = ['#3b82f6', '#ef4444', '#8b5cf6', '#f59e0b', '#14b8a6', '#ec4899', '#f97316', '#6366f1'];
   const $ = s => document.querySelector(s);
-  const vpEl = $('#vp'), worldEl = $('#world'), linksEl = $('#links'), cardsEl = $('#cards');
+  const vpEl = $('#vp'), worldEl = $('#world'), linksEl = $('#links'), boardCardsEl = $('#cards');
+  const svEl = $('#sheetView'), svInnerEl = $('#svInner'), svCardsEl = $('#svCards'), svLinksEl = $('#svLinks');
+  let cardsEl = boardCardsEl, view = 'board', orderIdx = {}, depthMap = {}; // view: 'board' (canvas) or 'sheet' (stacked)
 
   let S, calc, hist;
   const fwErr = {}; // card id -> message while the typed final weight is invalid
@@ -35,7 +37,10 @@
   // ---------- rendering ----------
   function render() {
     calc = NL.calc(S);
-    cardsEl.innerHTML = Object.keys(S.asm).map(cardHTML).join('');
+    if (view === 'sheet') {
+      const ord = sheetOrder(); orderIdx = Object.fromEntries(ord.map((id, k) => [id, k])); depthMap = depths();
+      cardsEl.innerHTML = ord.length ? ord.map(cardHTML).join('') : SHEET_EMPTY;
+    } else cardsEl.innerHTML = Object.keys(S.asm).map(cardHTML).join('');
     drawLinks();
     drawTree();
     drawNut();
@@ -51,7 +56,7 @@
     const kind = `<div class="rc-kind" title="Is this the final recipe or a sub-recipe?"><button class="${isRoot ? 'on' : ''}" data-kind="final:${id}">Final</button><button class="${isRoot ? '' : 'on'}" data-kind="sub:${id}">Sub-recipe</button></div>`;
     const kicker = isRoot ? 'Final recipe · per portion'
       : parents.length ? 'Sub-recipe · used in ' + parents.map(p => `<a data-goto="${p.pid}">${NL.esc(A(p.pid).name)}</a> (${p.amount} g)`).join(', ')
-        : 'Sub-recipe · not used yet. Drag the ● on the left onto a recipe to link it';
+        : 'Sub-recipe · not used yet. ' + (view === 'sheet' ? 'Link it from the card that uses it with ↳ Link existing sub-recipe' : 'Drag the ● on the left onto a recipe to link it');
     const bset = baseSet(a), baseAmt = baseTotal(a), bname = baseLabel(a, bset);
     const rows = a.items.map((it, idx) => {
       const sid = subIdOf(it.ref);
@@ -65,18 +70,20 @@
       const amt = `<td class="r w"><input class="num ${aerr ? 'bad' : ''}" inputmode="decimal" data-fk="amt-${id}-${idx}" data-amt="${id}:${idx}" value="${it.amount}" ${aerr ? `title="${NL.esc(aerr)}"` : ''}><span class="u">g</span></td>`;
       const del = `<td class="x"><button class="rc-del" data-delrow="${id}:${idx}" title="Remove">×</button></td>`;
       if (sid && A(sid)) {
-        return `<tr class="sub" data-sub="${sid}" style="--rc:${colorOf(sid)}"><td><span class="rc-sublink" data-goto="${sid}">${NL.esc(A(sid).name)}</span><span class="rc-see" data-goto="${sid}">see recipe →</span></td>${amt}${pct}${del}</tr>`;
+        return `<tr class="sub" data-sub="${sid}" style="--rc:${colorOf(sid)}"><td><span class="rc-sublink" data-goto="${sid}">${NL.esc(A(sid).name)}</span><span class="rc-see" data-goto="${sid}">see recipe ${view === 'sheet' ? (orderIdx[sid] > orderIdx[id] ? '↓' : '↑') : '→'}</span></td>${amt}${pct}${del}</tr>`;
       }
       const ing = NL.ingMap[it.ref.slice(4)];
       return `<tr><td>${NL.esc(ing?.name || it.ref)}<span class="rc-vendor">${NL.esc(ing?.vendor || '')}</span></td>${amt}${pct}${del}</tr>`;
     }).join('') || `<tr class="rc-empty"><td colspan="5">No ingredients yet — use the buttons below or drag from the library</td></tr>`;
     const kcal = Math.round(c.perG[0] * (isRoot ? c.yielded : 100));
-    return `<div class="rcard ${isRoot ? 'final' : ''} ${a.collapsed ? 'rc-collapsed' : ''} ${!isRoot && !parents.length ? 'orphan' : ''}" data-id="${id}" style="left:${a.x}px;top:${a.y}px;--c:${colorOf(id)}">
+    return `<div class="rcard ${isRoot ? 'final' : ''} ${a.collapsed ? 'rc-collapsed' : ''} ${!isRoot && !parents.length ? 'orphan' : ''}" data-id="${id}" style="${view === 'sheet' ? `--depth:${depthMap[id] || 0};` : `left:${a.x}px;top:${a.y}px;`}--c:${colorOf(id)}">
       ${isRoot ? '' : `<span class="port" data-port="${id}" title="Drag onto the recipe that uses this card"></span>`}
       <div class="rc-top" data-drag>
         <div class="rc-kick-row"><div class="rc-kicker">${kicker}</div>${kind}</div>
         <div class="rc-titlebar">
+          <span class="sv-grip" data-grip="${id}" title="Drag to move this card up or down">⠿</span>
           <input class="rc-title" data-fk="title-${id}" data-title="${id}" value="${NL.esc(a.name)}">
+          <button class="rc-ib sv-only" data-move="${id}:-1" title="Move card up">↑</button><button class="rc-ib sv-only" data-move="${id}:1" title="Move card down">↓</button>
           <button class="rc-ib" data-collapse="${id}" title="${a.collapsed ? 'Expand' : 'Collapse'}">${a.collapsed ? '▸' : '▾'}</button>
           <button class="rc-ib" data-copycard="${id}" title="Copy this card${descendants(id).size ? ' (with its sub-recipe cards)' : ''}. Paste into any tab with 📋 Paste card or Ctrl+V">⧉</button>
           <button class="rc-ib del" data-delcard="${id}" title="Delete this card">🗑</button>
@@ -124,6 +131,7 @@
   }
 
   function drawLinks() {
+    if (view === 'sheet') return drawSheetLinks();
     let out = '';
     for (const [pid, a] of Object.entries(S.asm)) {
       const pEl = cardsEl.querySelector(`[data-id="${pid}"]`); if (!pEl) continue;
@@ -187,6 +195,7 @@
     return h;
   }
   function arrange() {
+    if (view === 'sheet') { S._arrange = true; return render(); } // board layout is done when the board is shown
     render();
     const H = heights(), placed = new Set(), colBottom = [];
     const place = (id, d, desired) => {
@@ -215,9 +224,131 @@
   }
   function goto(id) {
     const a = A(id), el = cardsEl.querySelector(`[data-id="${id}"]`); if (!a || !el) return;
-    vp.centerOn(a.x + CARDW / 2, a.y + Math.min(el.offsetHeight, 500) / 2, Math.max(vp.v.s, 0.7));
+    if (view === 'sheet') el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    else vp.centerOn(a.x + CARDW / 2, a.y + Math.min(el.offsetHeight, 500) / 2, Math.max(vp.v.s, 0.7));
     setTimeout(() => { const e2 = cardsEl.querySelector(`[data-id="${id}"]`); e2?.classList.remove('flash'); void e2?.offsetWidth; e2?.classList.add('flash'); }, 150);
   }
+
+  // ---------- sheet view: the same cards stacked top to bottom, in an order the chef sets ----------
+  const SHEET_EMPTY = `<div class="empty-hint sv-empty"><b>Blank recipe</b><span>Start with any card: a sub-recipe (a sauce, a broth) or the final dish. Use the <i>Final / Sub-recipe</i> switch on each card. Cards stack top to bottom; drag ⠿ to reorder.</span><button class="btn primary" data-emptyadd>＋ Add card</button></div>`;
+  const PREFS = 'nlv2_sheet_prefs';
+  const prefs = { links: 'jump', width: 'full' };
+  try { Object.assign(prefs, JSON.parse(localStorage.getItem(PREFS)) || {}); } catch { }
+  function applyPrefs() {
+    svEl.className = `sheetview lk-${prefs.links} w-${prefs.width}`;
+    svEl.querySelectorAll('[data-svlinks]').forEach(b => b.classList.toggle('on', b.dataset.svlinks === prefs.links));
+    svEl.querySelectorAll('[data-svwidth]').forEach(b => b.classList.toggle('on', b.dataset.svwidth === prefs.width));
+  }
+  function savePrefs() { try { localStorage.setItem(PREFS, JSON.stringify(prefs)); } catch { } applyPrefs(); }
+  applyPrefs();
+
+  // saved order first, then any new cards; with no saved order, final recipe then its sub-recipes depth-first
+  function sheetOrder() {
+    const ids = Object.keys(S.asm), have = new Set(ids), out = [], seen = new Set();
+    const push = id => { if (have.has(id) && !seen.has(id)) { seen.add(id); out.push(id); return true; } return false; };
+    if (S.order) { S.order.forEach(push); ids.forEach(push); return out; }
+    const walk = id => { if (!push(id)) return; for (const it of A(id).items) { const s = subIdOf(it.ref); if (s) walk(s); } };
+    if (hasFinal()) walk(S.root);
+    ids.filter(id => !parentsOf(id).length).forEach(walk);
+    ids.forEach(walk);
+    return out;
+  }
+  const ensureOrder = () => { S.order = sheetOrder(); };
+  function depths() {
+    const d = {}, q = Object.keys(S.asm).filter(id => id === S.root || !parentsOf(id).length).map(id => [id, 0]);
+    while (q.length) {
+      const [id, k] = q.shift(); if (d[id] != null && d[id] <= k) continue; d[id] = k;
+      for (const it of A(id).items) { const s = subIdOf(it.ref); if (s && A(s)) q.push([s, k + 1]); }
+    }
+    return d;
+  }
+  function moveCard(id, dir) {
+    ensureOrder();
+    const i = S.order.indexOf(id), j = i + dir; if (i < 0 || j < 0 || j >= S.order.length) return;
+    [S.order[i], S.order[j]] = [S.order[j], S.order[i]];
+    render(); commit();
+    cardsEl.querySelector(`[data-id="${id}"]`)?.scrollIntoView({ block: 'nearest' });
+  }
+  function drawSheetLinks() {
+    if (prefs.links !== 'lines') { svLinksEl.innerHTML = ''; return; }
+    const box = svInnerEl.getBoundingClientRect(); let out = '', k = 0;
+    for (const [pid, a] of Object.entries(S.asm)) {
+      const pEl = svCardsEl.querySelector(`[data-id="${pid}"]`); if (!pEl) continue;
+      const pr = pEl.getBoundingClientRect();
+      for (const it of a.items) {
+        const sid = subIdOf(it.ref), cEl = sid && A(sid) && svCardsEl.querySelector(`[data-id="${sid}"]`); if (!cEl) continue;
+        const row = pEl.querySelector(`tr[data-sub="${sid}"]`), rr = row && !a.collapsed ? row.getBoundingClientRect() : null, cr = cEl.getBoundingClientRect();
+        const x1 = pr.left - box.left, y1 = (rr ? rr.top + rr.height / 2 : pr.top + 34) - box.top;
+        const x2 = cr.left - box.left, y2 = cr.top - box.top + 30;
+        const g = 34 + (k++ % 4) * 14, c1 = x1 - g, c2 = x2 - g, col = colorOf(sid);
+        const d = `M${x1},${y1} C${c1},${y1} ${c2},${y2} ${x2},${y2}`, mx = (x1 + 3 * c1 + 3 * c2 + x2) / 8, my = (y1 + y2) / 2;
+        out += `<g class="lk" data-link="${pid}:${sid}"><path class="link" d="${d}" stroke="${col}"/><path class="link-hit" d="${d}"/><circle class="link-dot" cx="${x1}" cy="${y1}" r="5" fill="${col}"/><circle class="link-dot" cx="${x2}" cy="${y2}" r="5" fill="${col}"/>
+          <g class="lk-cut" data-cut="${pid}:${sid}" transform="translate(${mx},${my})" style="--lc:${col}"><title>Remove link: ${NL.esc(A(sid).name)} → ${NL.esc(a.name)}</title><circle r="13"/><text y="1">✂</text></g></g>`;
+      }
+    }
+    svLinksEl.innerHTML = out;
+  }
+  new ResizeObserver(() => { if (view === 'sheet' && prefs.links === 'lines') drawSheetLinks(); }).observe(svCardsEl);
+  // cards added while in the sheet get a free spot on the board the next time it is shown
+  function placeNewCards() {
+    const ids = Object.keys(S.asm).filter(id => A(id)._place); if (!ids.length) return false;
+    const H = heights(), placed = Object.entries(S.asm).filter(([, a]) => !a._place);
+    let right = placed.length ? Math.max(...placed.map(([, a]) => a.x + CARDW)) : -GAPX;
+    for (const id of ids) {
+      const n = A(id), p = parentsOf(id).map(x => A(x.pid)).find(a => !a._place);
+      if (p) { n.x = p.x + CARDW + GAPX; n.y = p.y; } else { n.x = right + GAPX; n.y = 0; right = n.x + CARDW; }
+      for (let t = 0; t < 40; t++) {
+        const hit = Object.entries(S.asm).find(([oid, a]) => oid !== id && !a._place && Math.abs(a.x - n.x) < CARDW && n.y < a.y + (H[oid] || 300) && n.y + (H[id] || 300) > a.y);
+        if (!hit) break; n.y = hit[1].y + (H[hit[0]] || 300) + GAPY;
+      }
+      delete n._place;
+    }
+    render(); return true;
+  }
+  function setView(v) {
+    if (v === view) return;
+    clearTimeout(typingT); commit(); NL.closePicker();
+    view = v;
+    document.body.classList.toggle('view-sheet', v === 'sheet');
+    document.querySelectorAll('#viewSeg [data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === v));
+    boardCardsEl.innerHTML = ''; svCardsEl.innerHTML = ''; linksEl.innerHTML = ''; svLinksEl.innerHTML = '';
+    cardsEl = v === 'sheet' ? svCardsEl : boardCardsEl;
+    if (v === 'sheet') { render(); svEl.scrollTop = 0; return; }
+    // board placement is saved without its own undo step, so undo keeps meaning "undo my last edit"
+    if (S._arrange) { delete S._arrange; arrange(); wb.save(S); hist.sync(); vp.fit(bounds(), 40, { min: 0.8, align: 'left' }); }
+    else { render(); if (placeNewCards()) { wb.save(S); hist.sync(); } }
+  }
+  // drag a card's ⠿ grip up or down
+  svCardsEl.addEventListener('pointerdown', e => {
+    const g = e.target.closest('[data-grip]'); if (!g || e.button !== 0) return;
+    e.preventDefault();
+    const id = g.dataset.grip, el = g.closest('.rcard');
+    ensureOrder();
+    const line = document.createElement('div'); line.className = 'sv-drop'; svInnerEl.appendChild(line);
+    el.classList.add('sv-dragging');
+    let to = null;
+    const mv = ev => {
+      const cards = [...svCardsEl.querySelectorAll('.rcard')], box = svInnerEl.getBoundingClientRect();
+      let idx = cards.length;
+      for (let k = 0; k < cards.length; k++) { const r = cards[k].getBoundingClientRect(); if (ev.clientY < r.top + r.height / 2) { idx = k; break; } }
+      to = idx;
+      const yy = cards[idx] ? cards[idx].getBoundingClientRect().top - 10 : cards[cards.length - 1].getBoundingClientRect().bottom + 8;
+      line.style.top = (yy - box.top) + 'px';
+      const sr = svEl.getBoundingClientRect();
+      if (ev.clientY < sr.top + 60) svEl.scrollTop -= 16; else if (ev.clientY > sr.bottom - 60) svEl.scrollTop += 16;
+    };
+    const up = () => {
+      removeEventListener('pointermove', mv); removeEventListener('pointerup', up);
+      line.remove(); el.classList.remove('sv-dragging');
+      if (to == null) return;
+      const from = S.order.indexOf(id); let t = to > from ? to - 1 : to;
+      if (t === from) return;
+      S.order.splice(from, 1); S.order.splice(t, 0, id);
+      render(); commit();
+    };
+    addEventListener('pointermove', mv); addEventListener('pointerup', up);
+    mv(e);
+  });
 
   // ---------- mutations ----------
   const commit = () => hist.commit();
@@ -259,9 +390,10 @@
     const color = COLORS.find(c => !used.has(c)) || COLORS[Object.keys(S.asm).length % COLORS.length];
     const el = cardsEl.querySelector(`[data-id="${pid}"]`);
     S.asm[nid] = { name: 'New sub-recipe', items: [], yieldLoss: 0, steps: [], notes: '', color, x: p.x + CARDW + GAPX, y: p.y + (el ? el.offsetHeight : 200) - 120 };
+    if (view === 'sheet') { S.asm[nid]._place = true; if (S.order) S.order.splice(S.order.indexOf(pid) + 1, 0, nid); }
     // avoid landing on top of another card
-    const H = heights();
-    for (let k = 0; k < 30; k++) {
+    const H = view === 'sheet' ? null : heights();
+    for (let k = 0; H && k < 30; k++) {
       const n = S.asm[nid];
       const hit = Object.entries(S.asm).find(([id, a]) => id !== nid && Math.abs(a.x - n.x) < CARDW && n.y < a.y + (H[id] || 300) && n.y + 300 > a.y);
       if (!hit) break; n.y = hit[1].y + (H[hit[0]] || 300) + GAPY;
@@ -276,16 +408,16 @@
     const nid = NL.uid('s'), used = new Set(Object.values(S.asm).map(a => a.color));
     const color = COLORS.find(c => !used.has(c)) || COLORS[Object.keys(S.asm).length % COLORS.length];
     const r = vpEl.getBoundingClientRect(), c = vp.toWorld(r.left + r.width / 2, r.top + r.height / 3);
-    S.asm[nid] = { name: 'New card', items: [], yieldLoss: 0, steps: [], notes: '', color, x: Math.round(c.x - CARDW / 2), y: Math.round(c.y - 60) };
-    const H = heights();
-    for (let k = 0; k < 30; k++) {
+    S.asm[nid] = { name: 'New card', items: [], yieldLoss: 0, steps: [], notes: '', color, x: Math.round(c.x - CARDW / 2), y: Math.round(c.y - 60), ...(view === 'sheet' ? { _place: true } : {}) };
+    const H = view === 'sheet' ? null : heights();
+    for (let k = 0; H && k < 30; k++) {
       const n = S.asm[nid];
       const hit = Object.entries(S.asm).find(([id, a]) => id !== nid && Math.abs(a.x - n.x) < CARDW && n.y < a.y + (H[id] || 300) && n.y + 300 > a.y);
       if (!hit) break; n.x = hit[1].x + CARDW + 40;
     }
     render(); commit(); goto(nid);
     setTimeout(() => { const t = cardsEl.querySelector(`[data-title="${nid}"]`); t?.focus(); t?.select(); }, 330);
-    NL.toast('Card added. Drag its ● onto the recipe that uses it, or add it later with + Ingredient');
+    NL.toast(view === 'sheet' ? 'Card added at the bottom. Link it from the card that uses it with ↳ Link existing sub-recipe' : 'Card added. Drag its ● onto the recipe that uses it, or add it later with + Ingredient');
   }
   function linkCard(child, parent) {
     if (A(parent).items.some(it => it.ref === 'asm:' + child)) return NL.toast('Already linked');
@@ -321,6 +453,7 @@
       if (!n.color || n.color === '#0f766e') n.color = COLORS.find(c => !used.has(c)) || COLORS[Object.keys(S.asm).length % COLORS.length];
       used.add(n.color);
       n.x = (n.x || 0) + dx; n.y = (n.y || 0) + dy;
+      if (view === 'sheet') n._place = true;
       S.asm[map[k]] = n;
     }
     render(); commit(); goto(map[clip.top]);
@@ -453,11 +586,11 @@
 
   // ---------- interactions ----------
   const vp = NL.viewport(vpEl, worldEl, {
-    isBackground: t => t === vpEl || t === worldEl || t === cardsEl || t === linksEl,
+    isBackground: t => t === vpEl || t === worldEl || t === boardCardsEl || t === linksEl,
     onChange: v => { $('#zl').textContent = Math.round(v.s * 100) + '%'; },
   });
 
-  cardsEl.addEventListener('pointerdown', e => {
+  boardCardsEl.addEventListener('pointerdown', e => {
     const port = e.target.closest('[data-port]');
     if (port && e.button === 0) {
       const id = port.dataset.port, a = A(id);
@@ -533,6 +666,10 @@
   document.addEventListener('click', e => {
     const t = e.target, q = s => t.closest(s);
     let b;
+    if ((b = q('[data-view]'))) return setView(b.dataset.view);
+    if ((b = q('[data-svlinks]'))) { prefs.links = b.dataset.svlinks; savePrefs(); return render(); }
+    if ((b = q('[data-svwidth]'))) { prefs.width = b.dataset.svwidth; savePrefs(); return render(); }
+    if ((b = q('[data-move]'))) { const [id, d] = b.dataset.move.split(':'); return moveCard(id, +d); }
     if ((b = q('[data-goto]'))) return goto(b.dataset.goto);
     if ((b = q('[data-togbase]'))) {
       const [id, i] = b.dataset.togbase.split(':'), a = A(id), it = a.items[+i];
@@ -571,13 +708,13 @@
   // library drag → card
   $('#libSearch').addEventListener('input', drawLib);
   $('#lib').addEventListener('dragstart', e => { const it = e.target.closest('.lib-item'); if (it) { e.dataTransfer.setData('text/plain', 'ing:' + it.dataset.ing); e.dataTransfer.effectAllowed = 'copy'; } });
-  vpEl.addEventListener('dragover', e => {
+  for (const dz of [vpEl, svEl]) dz.addEventListener('dragover', e => {
     e.preventDefault();
     const c = e.target.closest?.('.rcard');
     cardsEl.querySelectorAll('.drop').forEach(x => x !== c && x.classList.remove('drop'));
     c?.classList.add('drop');
   });
-  vpEl.addEventListener('drop', e => {
+  for (const dz of [vpEl, svEl]) dz.addEventListener('drop', e => {
     e.preventDefault();
     cardsEl.querySelectorAll('.drop').forEach(x => x.classList.remove('drop'));
     const v = e.dataTransfer.getData('text/plain'), c = e.target.closest?.('.rcard');
@@ -592,7 +729,7 @@
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? hist.redo() : hist.undo(); }
     else if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); hist.redo(); }
     else if (mod && e.key.toLowerCase() === 'v' && readClip()?.cards && !document.querySelector('.cmp-ov, .nl-prompt-ov')) { e.preventDefault(); pasteCard(); }
-    else if (e.key === 'f' || e.key === 'F') vp.fit(bounds());
+    else if ((e.key === 'f' || e.key === 'F') && view === 'board') vp.fit(bounds());
   });
 
   $('#undo').onclick = () => hist.undo();
@@ -619,7 +756,7 @@
   // TEMP: reset-to-sample button (remove with #resetSample in index.html)
   $('#resetSample').onclick = () => {
     if (!confirm('Replace this tab with the original sample recipe? Other tabs are not touched. You can undo with Ctrl+Z.')) return;
-    S = fromSample(); arrange(); commit(); vp.fit(bounds(), 40, { min: 0.8, align: 'left' });
+    S = fromSample(); arrange(); commit(); if (view === 'board') vp.fit(bounds(), 40, { min: 0.8, align: 'left' });
     NL.toast('Sample recipe restored');
   };
   $('#newIng').onclick = async () => { const i = await NL.ingredientForm(); if (i) NL.toast(`"${i.name}" added. Drag it from the list.`); };
@@ -634,8 +771,9 @@
 
   function openState(state) {
     S = state;
+    if (view === 'sheet') { render(); hist = NL.history(() => wb.save(S), () => S, s => { S = s; render(); }); svEl.scrollTop = 0; return; }
     const needsArrange = S._arrange; delete S._arrange;
-    if (needsArrange) { arrange(); wb.save(S); } else render();
+    if (needsArrange) { arrange(); wb.save(S); } else { render(); if (placeNewCards()) wb.save(S); }
     hist = NL.history(() => wb.save(S), () => S, s => { S = s; render(); }); // after arranging, so undo never returns to unplaced cards
     if (!Object.keys(S.asm).length) { vp.v.s = 1; vp.v.x = 0; vp.v.y = 0; vp.apply(); return; }
     const empty = hasFinal() && Object.keys(S.asm).length === 1 && !A(S.root).items.length;

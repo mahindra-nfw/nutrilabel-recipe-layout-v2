@@ -168,3 +168,39 @@ tr:hover .rc-del { visibility: visible; } .rc-del:hover { color: var(--danger); 
 .lk-cut:hover circle { fill: var(--danger); stroke: var(--danger); }
 .lk-cut:hover text { fill: #fff; }
 .rc-tbl .num.bad { border-color: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); }
+
+/* board / sheet toggle */
+.view-seg { display: inline-flex; flex: none; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-left: 10px; }
+.view-seg button { border: 0; background: #fff; padding: 5px 12px; font-weight: 600; font-size: 13px; color: var(--muted); cursor: pointer; }
+.view-seg button + button { border-left: 1px solid var(--line); }
+.view-seg button.on { background: var(--accent); color: #fff; }
+body.view-sheet #vp, body.view-sheet #arrange, body.view-sheet #fit { display: none !important; }
+body:not(.view-sheet) .sheetview { display: none; }
+
+/* sheet view */
+.sheetview { overflow: auto; background: #f4f5f7; position: relative; min-width: 0; }
+.sv-bar { position: sticky; top: 0; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 9px 24px; background: rgba(244,245,247,.95); border-bottom: 1px solid var(--line); font-size: 12px; }
+.sv-lab { color: var(--faint); font-weight: 700; text-transform: uppercase; letter-spacing: .4px; font-size: 10px; }
+.sv-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #fff; margin-right: 10px; }
+.sv-seg button { border: 0; background: none; padding: 4px 10px; font-size: 12px; color: var(--muted); cursor: pointer; }
+.sv-seg button + button { border-left: 1px solid var(--line); }
+.sv-seg button.on { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.sv-hint { margin-left: auto; color: var(--faint); }
+.sv-inner { position: relative; padding: 18px 24px 140px; }
+#svCards { display: flex; flex-direction: column; align-items: flex-start; gap: 18px; }
+.sheetview .rcard { position: relative; left: auto; top: auto; }
+.sheetview .port { display: none; }
+.w-full .rcard, .w-full .rcard.final { width: 100%; }
+.w-card .rcard { width: 540px; } .w-card .rcard.final { width: 560px; }
+.lk-indent .sv-inner { padding-left: 42px; }
+.lk-indent .rcard { margin-left: calc(var(--depth, 0) * 40px); }
+.w-full.lk-indent .rcard { width: calc(100% - var(--depth, 0) * 40px); }
+.lk-indent .rcard::before { content: ''; position: absolute; left: -16px; top: 4px; bottom: 4px; width: 4px; border-radius: 2px; background: var(--c); opacity: .75; }
+.lk-lines .sv-inner { padding-left: 104px; }
+.sv-grip, .sv-only { display: none; }
+.sheetview .sv-grip { display: inline-flex; align-items: center; cursor: grab; color: var(--faint); padding: 0 6px 0 0; font-size: 18px; user-select: none; touch-action: none; }
+.sheetview .sv-grip:hover { color: var(--text); }
+.sheetview .sv-only { display: inline-block; }
+.sv-drop { position: absolute; left: 24px; right: 24px; height: 3px; background: var(--accent); border-radius: 2px; z-index: 7; pointer-events: none; }
+.rcard.sv-dragging { opacity: .45; }
+.sv-empty { position: static; transform: none; margin: 60px auto; }

@@ -297,6 +297,7 @@ NL.history = function (save, get, set) {
       past.push(last); if (past.length > 100) past.shift();
       future.length = 0; last = now; save();
     },
+    sync() { last = JSON.stringify(get()); }, // accept the current state as-is, without an undo step
     undo() { if (!past.length) return; future.push(last); last = past.pop(); set(JSON.parse(last)); save(); },
     redo() { if (!future.length) return; past.push(last); last = future.pop(); set(JSON.parse(last)); save(); },
   };

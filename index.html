@@ -11,6 +11,7 @@
   <header class="topbar">
     <span class="brand">NutriLabel <small>Recipe Builder</small></span>
     <span class="title" id="recipeTitle"></span>
+    <div class="view-seg" id="viewSeg" title="Switch between the board and a top-to-bottom sheet of the same recipe"><button data-view="board" class="on">⊞ Board</button><button data-view="sheet">☰ Sheet</button></div>
     <span class="spacer"></span>
     <button class="btn ghost" id="undo" title="Undo (Ctrl+Z)">↶</button>
     <button class="btn ghost" id="redo" title="Redo (Ctrl+Y)">↷</button>
@@ -51,6 +52,16 @@
       <div class="zoombar">
         <button id="zout">−</button><span class="zl" id="zl">100%</span><button id="zin">+</button>
       </div>
+    </section>
+    <section class="sheetview" id="sheetView">
+      <div class="sv-bar">
+        <span class="sv-lab">Links</span>
+        <div class="sv-seg"><button data-svlinks="jump">Jump links</button><button data-svlinks="indent">Indent + rail</button><button data-svlinks="lines">Lines</button></div>
+        <span class="sv-lab">Width</span>
+        <div class="sv-seg"><button data-svwidth="full">Full width</button><button data-svwidth="card">Card width</button></div>
+        <span class="sv-hint">Drag ⠿ or use ↑ ↓ to reorder cards</span>
+      </div>
+      <div class="sv-inner" id="svInner"><svg class="links" id="svLinks"></svg><div id="svCards"></div></div>
     </section>
     <aside class="nut" id="nut"></aside>
   </main>
