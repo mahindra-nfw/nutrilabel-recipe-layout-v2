@@ -52,7 +52,7 @@
 .rc-tbl th { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--faint); font-weight: 700; text-align: left; padding: 6px 8px; border-top: 1px solid var(--line2); border-bottom: 1px solid var(--line); background: #fafbfc; }
 .rc-tbl th:first-child, .rc-tbl td:first-child { padding-left: 16px; }
 .rc-tbl td { padding: 4px 8px; border-bottom: 1px solid var(--line2); height: 34px; }
-.rc-tbl .r { text-align: right; font-variant-numeric: tabular-nums; }
+.rc-tbl .r { text-align: center; font-variant-numeric: tabular-nums; }
 .rc-tbl .pc { color: var(--muted); font-size: 12px; width: 60px; }
 .rc-tbl .w { width: 100px; white-space: nowrap; } .rc-tbl .w .u { color: var(--faint); margin-left: 3px; }
 .rc-tbl .x { width: 26px; }
@@ -105,7 +105,7 @@ tr:hover .rc-del { visibility: visible; } .rc-del:hover { color: var(--danger); 
 .bk-in .num { width: 62px; }
 .bk-base { font-weight: 700; color: var(--c); }
 .rc-tot td { font-weight: 700; background: #fafbfc; border-bottom: 1px solid var(--line); }
-.rc-tot .bk { color: var(--c); padding-right: 34px; }
+.rc-tot .bk { color: var(--c); padding-right: 34px; } /* room for the B button, so totals center over the % fields */
 .rc-bscale { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 16px 0; color: var(--muted); font-size: 12px; }
 .rc-bscale .num { width: 76px; }
 .bk-b { width: 20px; height: 20px; margin-left: 6px; padding: 0; border-radius: 5px; border: 1px solid var(--line); background: #fff; color: var(--faint); font-size: 11px; font-weight: 800; cursor: pointer; vertical-align: middle; }
@@ -204,3 +204,13 @@ body:not(.view-sheet) .sheetview { display: none; }
 .sv-drop { position: absolute; left: 24px; right: 24px; height: 3px; background: var(--accent); border-radius: 2px; z-index: 7; pointer-events: none; }
 .rcard.sv-dragging { opacity: .45; }
 .sv-empty { position: static; transform: none; margin: 60px auto; }
+.rc-tbl thead th:nth-child(4) { padding-right: 34px; } /* Baker % heading centers over the % field, not the B button */
+
+/* collapsible left panel */
+.cmain { position: relative; }
+.cmain.hide-side { grid-template-columns: 0 1fr 0; }
+.cmain.hide-side.show-nut { grid-template-columns: 0 1fr 320px; }
+.cmain.hide-side .side { overflow: hidden; border-right: 0; }
+.side-tog { position: absolute; z-index: 20; top: 12px; left: 244px; width: 32px; height: 32px; padding: 0 0 2px; border-radius: 50%; border: 2px solid #fff; background: var(--accent); color: #fff; font-size: 20px; font-weight: 700; line-height: 1; box-shadow: 0 2px 8px rgba(47,111,237,.35); cursor: pointer; transition: left .2s, transform .12s, background .12s; }
+.side-tog:hover { background: #1f57c9; transform: scale(1.08); }
+.cmain.hide-side .side-tog { left: 10px; }

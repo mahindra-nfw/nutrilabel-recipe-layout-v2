@@ -753,6 +753,17 @@
   $('#addCard').onclick = () => addCard();
   $('#pasteCard').onclick = () => pasteCard();
   $('#compare').onclick = () => openCompare();
+  // hide / show the left panel (remembered per browser)
+  const SIDE = 'nlv2_side_hidden';
+  function setSide(hidden) {
+    $('#cmain').classList.toggle('hide-side', hidden);
+    $('#sideTog').textContent = hidden ? '›' : '‹';
+    $('#sideTog').title = hidden ? 'Show the panel (recipe structure and ingredient library)' : 'Hide the panel';
+    try { localStorage.setItem(SIDE, hidden ? '1' : ''); } catch { }
+    setTimeout(drawLinks, 220);
+  }
+  $('#sideTog').onclick = () => setSide(!$('#cmain').classList.contains('hide-side'));
+  try { if (localStorage.getItem(SIDE)) setSide(true); } catch { }
   // TEMP: reset-to-sample button (remove with #resetSample in index.html)
   $('#resetSample').onclick = () => {
     if (!confirm('Replace this tab with the original sample recipe? Other tabs are not touched. You can undo with Ctrl+Z.')) return;

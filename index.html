@@ -13,8 +13,8 @@
     <span class="title" id="recipeTitle"></span>
     <div class="view-seg" id="viewSeg" title="Switch between the board and a top-to-bottom sheet of the same recipe"><button data-view="board" class="on">⊞ Board</button><button data-view="sheet">☰ Sheet</button></div>
     <span class="spacer"></span>
-    <button class="btn ghost" id="undo" title="Undo (Ctrl+Z)">↶</button>
-    <button class="btn ghost" id="redo" title="Redo (Ctrl+Y)">↷</button>
+    <button class="btn" id="undo" title="Undo (Ctrl+Z)">↶</button>
+    <button class="btn" id="redo" title="Redo (Ctrl+Y)">↷</button>
     <button class="btn" id="arrange">⇶ Auto-arrange</button>
     <button class="btn" id="fit">⤢ Fit</button>
     <button class="btn" id="toggleNut">Nutrition ▸</button>
@@ -27,6 +27,7 @@
     <button class="btn ghost" id="resetSample" title="Replace this tab with the original sample recipe (undo with Ctrl+Z)">↺ Reset</button>
   </header>
   <main class="cmain" id="cmain">
+    <button class="side-tog" id="sideTog" title="Hide the panel">‹</button>
     <aside class="side">
       <div class="side-block">
         <div class="side-h">Recipe structure</div>
