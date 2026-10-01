@@ -167,3 +167,4 @@ tr:hover .rc-del { visibility: visible; } .rc-del:hover { color: var(--danger); 
 .lk-cut text { font-size: 14px; text-anchor: middle; dominant-baseline: middle; fill: var(--lc); user-select: none; }
 .lk-cut:hover circle { fill: var(--danger); stroke: var(--danger); }
 .lk-cut:hover text { fill: #fff; }
+.rc-tbl .num.bad { border-color: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); }

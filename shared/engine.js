@@ -117,6 +117,14 @@ NL.refName = function (model, ref) {
   return model.asm[id]?.name || '(missing)';
 };
 
+// Parse a typed number. "1,5" is 1.5; "1,000" (comma + exactly 3 digits) is a thousands separator. NaN if not a number.
+NL.parseNum = function (raw) {
+  let v = String(raw ?? '').trim().replace(/\s+/g, '');
+  if (v === '') return NaN;
+  v = /^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(v) ? v.replace(/,/g, '') : v.replace(',', '.');
+  return /^-?(\d+\.?\d*|\.\d+)$/.test(v) ? Number(v) : NaN;
+};
+
 NL.fmt = function (n, d = 1) {
   if (!isFinite(n)) return '0';
   const r = Math.round(n * 10 ** d) / 10 ** d;
@@ -478,3 +486,16 @@ NL.prompt = function (label, defaultVal) {
 
 
 NL.isTyping = () => { const a = document.activeElement; return a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable); };
+
+// Clicking into a number box that holds 0 clears it so the chef can type straight away; the 0 comes back if nothing is typed.
+document.addEventListener('focusin', e => {
+  const t = e.target;
+  if (NL.refocusing || !t.matches?.('input[inputmode="decimal"]') || t.disabled || t.readOnly) return;
+  if (NL.parseNum(t.value) === 0) { t.dataset.zeroCleared = t.value; t.value = ''; }
+});
+document.addEventListener('focusout', e => {
+  const t = e.target, z = t.dataset?.zeroCleared;
+  if (z == null) return;
+  delete t.dataset.zeroCleared;
+  if (t.isConnected && t.value === '') t.value = z;
+});

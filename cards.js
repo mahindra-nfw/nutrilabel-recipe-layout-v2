@@ -8,6 +8,7 @@
 
   let S, calc, hist;
   const fwErr = {}; // card id -> message while the typed final weight is invalid
+  const amtErr = {}; // 'card:row' -> message while a typed ingredient weight is invalid
   const fwStart = {}; // card id -> yieldLoss when editing began, restored if the entry is invalid
 
   function fromSample() {
@@ -60,7 +61,8 @@
         ? `<td class="r bk base"><span class="bk-base" title="Share of the base (${NL.esc(bname)})">${bpct == null ? '—' : NL.fmt(bpct, 2) + '%'}</span>${bbtn}</td>`
         : `<td class="r bk"><span class="bk-in"><input class="num" inputmode="decimal" data-fk="bk-${id}-${idx}" data-bk="${id}:${idx}" value="${bpct ?? ''}" ${baseAmt > 0 ? 'title="Baker %: type a % to set this weight from the base"' : `disabled placeholder="—" title="${bset.length ? 'The base has no weight yet' : 'Press B on an ingredient to choose the base'}"`}>%</span>${bbtn}</td>`;
       const pct = `<td class="r pc">${NL.pct(+it.amount || 0, c.batch)}</td>${bk}`;
-      const amt = `<td class="r w"><input class="num" inputmode="decimal" data-fk="amt-${id}-${idx}" data-amt="${id}:${idx}" value="${it.amount}"><span class="u">g</span></td>`;
+      const aerr = amtErr[`${id}:${idx}`];
+      const amt = `<td class="r w"><input class="num ${aerr ? 'bad' : ''}" inputmode="decimal" data-fk="amt-${id}-${idx}" data-amt="${id}:${idx}" value="${it.amount}" ${aerr ? `title="${NL.esc(aerr)}"` : ''}><span class="u">g</span></td>`;
       const del = `<td class="x"><button class="rc-del" data-delrow="${id}:${idx}" title="Remove">×</button></td>`;
       if (sid && A(sid)) {
         return `<tr class="sub" data-sub="${sid}" style="--rc:${colorOf(sid)}"><td><span class="rc-sublink" data-goto="${sid}">${NL.esc(A(sid).name)}</span><span class="rc-see" data-goto="${sid}">see recipe →</span></td>${amt}${pct}${del}</tr>`;
@@ -232,7 +234,7 @@
   function setFinalWeight(id, raw) {
     const batch = calc[id].batch, v = raw.trim();
     if (v === '') { delete fwErr[id]; if (id in fwStart) A(id).yieldLoss = fwStart[id]; return; }
-    const fw = Number(v.replace(',', '.'));
+    const fw = NL.parseNum(v);
     let err = '';
     if (!isFinite(fw)) err = 'Enter a number in grams';
     else if (batch <= 0) err = 'Add ingredients with weights first';
@@ -478,15 +480,22 @@
 
   document.addEventListener('input', e => {
     const d = e.target.dataset; if (!d) return;
-    if (d.amt) { const [id, i] = d.amt.split(':'); A(id).items[+i].amount = e.target.value === '' ? 0 : +e.target.value || 0; renderKeep(); }
+    if (d.amt) {
+      const [id, i] = d.amt.split(':'), raw = e.target.value, v = raw.trim() === '' ? 0 : NL.parseNum(raw);
+      if (!isFinite(v)) amtErr[d.amt] = 'Enter a weight in grams, e.g. 12.5';
+      else if (v < 0) amtErr[d.amt] = "Weight can't be negative";
+      else { delete amtErr[d.amt]; A(id).items[+i].amount = v; }
+      renderKeep();
+    }
     else if (d.title) { A(d.title).name = e.target.value; renderKeep(); }
     else if (d.fw) { setFinalWeight(d.fw, e.target.value); renderKeep(); }
     else if (d.bk) {
       const [id, i] = d.bk.split(':'), a = A(id), base = baseTotal(a), v = e.target.value.trim();
-      if (base > 0 && v !== '' && isFinite(+v) && +v >= 0) { a.items[+i].amount = round2(base * +v / 100); renderKeep(); }
+      const pv = NL.parseNum(v);
+      if (base > 0 && isFinite(pv) && pv >= 0) { a.items[+i].amount = round2(base * pv / 100); renderKeep(); }
     }
     else if (d.bscale || d.wscale) {
-      const id = d.bscale || d.wscale, a = A(id), v = +e.target.value;
+      const id = d.bscale || d.wscale, a = A(id), v = NL.parseNum(e.target.value);
       const snap = bscaleStart[id] || (bscaleStart[id] = a.items.map(it => +it.amount || 0));
       // scale by yield: required batch = desired yield / (1 - loss), so the factor is taken against the snapshot's yield
       const snapBase = d.bscale ? baseSet(a).reduce((s, k) => s + snap[k], 0) : snap.reduce((s, x) => s + x, 0) * (1 - Math.min(+a.yieldLoss || 0, 99.99) / 100);
@@ -511,6 +520,7 @@
       if (e.target.value.trim() === '') render();
       else if (fwErr[d.fw]) { NL.toast('Final weight not saved: ' + fwErr[d.fw]); delete fwErr[d.fw]; render(); }
     }
+    if (d?.amt && amtErr[d.amt]) { NL.toast('Weight not saved: ' + amtErr[d.amt]); delete amtErr[d.amt]; render(); }
     if (d?.bscale || d?.wscale || d?.bk) { delete bscaleStart[d.bscale || d.wscale]; render(); }
     if (isField(d)) commit();
   });
