@@ -257,7 +257,7 @@
 
   // ---------- sheet view: the same cards stacked top to bottom, in an order the chef sets ----------
   const SHEET_EMPTY = `<div class="empty-hint sv-empty"><b>Blank assembly</b><span>Start with any card: a sub-assembly (a sauce, a broth) or the final dish. Use the <i>Final / Sub-assembly</i> switch on each card. Cards stack top to bottom; drag ⠿ to reorder.</span><button class="btn primary" data-emptyadd>＋ Add card</button></div>`;
-  const PREFS = 'nlv2_sheet_prefs';
+  const PREFS = 'nlv3_sheet_prefs';
   const prefs = { links: 'jump', width: 'full' };
   try { Object.assign(prefs, JSON.parse(localStorage.getItem(PREFS)) || {}); } catch { }
   function applyPrefs() {
@@ -453,7 +453,7 @@
     NL.toast(`Linked. Set how many grams of "${A(child).name}" go into "${A(parent).name}"`);
   }
   // ---------- copy / paste cards (clipboard lives in localStorage so it works across tabs) ----------
-  const CLIP = 'nlv2_card_clipboard';
+  const CLIP = 'nlv3_card_clipboard';
   const readClip = () => { try { return JSON.parse(localStorage.getItem(CLIP)); } catch { return null; } };
   function updatePasteBtn() {
     const c = readClip(), btn = $('#pasteCard');
@@ -500,7 +500,7 @@
   }
 
   // ---------- favorites: saved cards (with their sub-assembly cards) reusable in any assembly ----------
-  const FAV = 'nlv2_favorites';
+  const FAV = 'nlv3_favorites';
   let favCache = null;
   const readFavs = () => favCache || (favCache = (() => { try { return JSON.parse(localStorage.getItem(FAV)) || []; } catch { return []; } })());
   const favById = fid => readFavs().find(f => f.id === fid);
@@ -862,12 +862,12 @@
   $('#themeBtn').onclick = () => {
     const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = t;
-    try { localStorage.setItem('nlv2_theme', t); } catch { }
+    try { localStorage.setItem('nlv3_theme', t); } catch { }
     showTheme();
   };
   showTheme();
   // hide / show the left panel (remembered per browser)
-  const SIDE = 'nlv2_side_hidden';
+  const SIDE = 'nlv3_side_hidden';
   function setSide(hidden) {
     $('#cmain').classList.toggle('hide-side', hidden);
     $('#sideTog').textContent = hidden ? '›' : '‹';
@@ -878,7 +878,7 @@
   $('#sideTog').onclick = () => setSide(!$('#cmain').classList.contains('hide-side'));
   // drag handles to resize the left panel and the All facts panel (remembered per browser; double-click resets)
   (function panelResize() {
-    const KEY = 'nlv2_panel_widths', m = $('#cmain');
+    const KEY = 'nlv3_panel_widths', m = $('#cmain');
     let w = {}; try { w = JSON.parse(localStorage.getItem(KEY)) || {}; } catch { }
     const save = () => { try { localStorage.setItem(KEY, JSON.stringify(w)); } catch { } };
     const apply = () => { for (const k of ['side', 'nut']) w[k] ? m.style.setProperty(`--${k}-w`, w[k] + 'px') : m.style.removeProperty(`--${k}-w`); };
@@ -933,7 +933,7 @@
 
   // ---------- boot ----------
   const wb = NL.workbook({
-    key: 'nlv2_cards_book',
+    key: 'nlv3_cards_book',
     sample, nameOf,
     beforeSwitch: () => { clearTimeout(typingT); commit(); },
     onSwitch: openState,

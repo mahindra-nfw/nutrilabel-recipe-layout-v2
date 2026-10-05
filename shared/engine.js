@@ -3,7 +3,7 @@
 // numbers are identical and only the interface differs.
 window.NL = window.NL || {};
 
-NL.CUSTOM_KEY = 'nlv2_custom_ingredients';
+NL.CUSTOM_KEY = 'nlv3_custom_ingredients';
 NL.CUSTOM_CAT = 'My Ingredients';
 NL.CAT_COLORS[NL.CUSTOM_CAT] = '#0ea5e9';
 try { (JSON.parse(localStorage.getItem(NL.CUSTOM_KEY)) || []).forEach(i => NL.INGREDIENTS.push(i)); } catch { }

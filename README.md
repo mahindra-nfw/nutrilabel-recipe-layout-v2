@@ -1,8 +1,8 @@
-# NutriLabel Recipe Builder (v2)
+# NutriLabel Recipe Builder (v3)
 
 Recipe builder in the linked recipe-card style (Layout B from the NutriLabel UI Lab). Zero dependencies: plain HTML, CSS and JavaScript.
 
-**Live site:** https://mahindra-nfw.github.io/nutrilabel-recipe-layout-v2/
+**Live site:** https://mahindra-nfw.github.io/nutrilabel-recipe-layout-v3/
 
 ## Features
 - Final recipe card with linked sub-recipe cards and connectors
