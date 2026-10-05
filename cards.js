@@ -1,5 +1,5 @@
-// NutriLabel recipe builder — recipe cards (Modernist Cuisine style) linked like a flow.
-// The final recipe is the main card; every sub-recipe row links to its own card.
+// NutriLabel assembly builder — assembly cards (Modernist Cuisine style) linked like a flow.
+// The final assembly is the main card; every sub-assembly row links to its own card.
 (function () {
   const CARDW = 540, GAPX = 140, GAPY = 36;
   const COLORS = ['#3b82f6', '#ef4444', '#8b5cf6', '#f59e0b', '#14b8a6', '#ec4899', '#f97316', '#6366f1'];
@@ -44,7 +44,7 @@
     drawLinks();
     drawTree();
     drawNut();
-    $('#recipeTitle').textContent = hasFinal() ? A(S.root).name : (S.draftName || 'Untitled recipe');
+    $('#recipeTitle').textContent = hasFinal() ? A(S.root).name : (S.draftName || 'Untitled assembly');
     $('#emptyHint').hidden = Object.keys(S.asm).length > 0;
     wb.live(S);
   }
@@ -53,10 +53,10 @@
   function cardHTML(id) {
     const a = A(id), c = calc[id], isRoot = id === S.root;
     const parents = parentsOf(id);
-    const kind = `<div class="rc-kind" title="Is this the final recipe or a sub-recipe?"><button class="${isRoot ? 'on' : ''}" data-kind="final:${id}">Final</button><button class="${isRoot ? '' : 'on'}" data-kind="sub:${id}">Sub-recipe</button></div>`;
-    const kicker = isRoot ? 'Final recipe · per portion'
-      : parents.length ? 'Sub-recipe · used in ' + parents.map(p => `<a data-goto="${p.pid}">${NL.esc(A(p.pid).name)}</a> (${p.amount} g)`).join(', ')
-        : 'Sub-recipe · not used yet. ' + (view === 'sheet' ? 'Link it from the card that uses it with ↳ Link existing sub-recipe' : 'Drag the ● on the left onto a recipe to link it');
+    const kind = `<div class="rc-kind" title="Is this the final assembly or a sub-assembly?"><button class="${isRoot ? 'on' : ''}" data-kind="final:${id}">Final</button><button class="${isRoot ? '' : 'on'}" data-kind="sub:${id}">Sub-assembly</button></div>`;
+    const kicker = isRoot ? 'Final assembly · per portion'
+      : parents.length ? 'Sub-assembly · used in ' + parents.map(p => `<a data-goto="${p.pid}">${NL.esc(A(p.pid).name)}</a> (${p.amount} g)`).join(', ')
+        : 'Sub-assembly · not used yet. ' + (view === 'sheet' ? 'Link it from the card that uses it with ↳ Link existing sub-assembly' : 'Drag the ● on the left onto an assembly to link it');
     const bset = baseSet(a), baseAmt = baseTotal(a), bname = baseLabel(a, bset);
     const rows = a.items.map((it, idx) => {
       const sid = subIdOf(it.ref);
@@ -70,14 +70,14 @@
       const amt = `<td class="r w"><input class="num ${aerr ? 'bad' : ''}" inputmode="decimal" data-fk="amt-${id}-${idx}" data-amt="${id}:${idx}" value="${it.amount}" ${aerr ? `title="${NL.esc(aerr)}"` : ''}><span class="u">g</span></td>`;
       const del = `<td class="x"><button class="rc-del" data-delrow="${id}:${idx}" title="Remove">×</button></td>`;
       if (sid && A(sid)) {
-        return `<tr class="sub" data-sub="${sid}" style="--rc:${colorOf(sid)}"><td><span class="rc-sublink" data-goto="${sid}">${NL.esc(A(sid).name)}</span><span class="rc-see" data-goto="${sid}">see recipe ${view === 'sheet' ? (orderIdx[sid] > orderIdx[id] ? '↓' : '↑') : '→'}</span></td>${amt}${pct}${del}</tr>`;
+        return `<tr class="sub" data-sub="${sid}" style="--rc:${colorOf(sid)}"><td><span class="rc-sublink" data-goto="${sid}">${NL.esc(A(sid).name)}</span><span class="rc-see" data-goto="${sid}">see assembly ${view === 'sheet' ? (orderIdx[sid] > orderIdx[id] ? '↓' : '↑') : '→'}</span></td>${amt}${pct}${del}</tr>`;
       }
       const ing = NL.ingMap[it.ref.slice(4)];
       return `<tr><td>${NL.esc(ing?.name || it.ref)}<span class="rc-vendor">${NL.esc(ing?.vendor || '')}</span></td>${amt}${pct}${del}</tr>`;
     }).join('') || `<tr class="rc-empty"><td colspan="5">No ingredients yet — use the buttons below or drag from the library</td></tr>`;
     const kcal = Math.round(c.perG[0] * (isRoot ? c.yielded : 100));
     return `<div class="rcard ${isRoot ? 'final' : ''} ${a.collapsed ? 'rc-collapsed' : ''} ${!isRoot && !parents.length ? 'orphan' : ''}" data-id="${id}" style="${view === 'sheet' ? `--depth:${depthMap[id] || 0};` : `left:${a.x}px;top:${a.y}px;`}--c:${colorOf(id)}">
-      ${isRoot ? '' : `<span class="port" data-port="${id}" title="Drag onto the recipe that uses this card"></span>`}
+      ${isRoot ? '' : `<span class="port" data-port="${id}" title="Drag onto the assembly that uses this card"></span>`}
       <div class="rc-top" data-drag>
         <div class="rc-kick-row"><div class="rc-kicker">${kicker}</div>${kind}</div>
         <div class="rc-titlebar">
@@ -85,7 +85,8 @@
           <input class="rc-title" data-fk="title-${id}" data-title="${id}" value="${NL.esc(a.name)}">
           <button class="rc-ib sv-only" data-move="${id}:-1" title="Move card up">↑</button><button class="rc-ib sv-only" data-move="${id}:1" title="Move card down">↓</button>
           <button class="rc-ib" data-collapse="${id}" title="${a.collapsed ? 'Expand' : 'Collapse'}">${a.collapsed ? '▸' : '▾'}</button>
-          <button class="rc-ib" data-copycard="${id}" title="Copy this card${descendants(id).size ? ' (with its sub-recipe cards)' : ''}. Paste into any tab with 📋 Paste card or Ctrl+V">⧉</button>
+          <button class="rc-ib fav ${favOf(id) ? 'on' : ''}" data-fav="${id}" title="${favOf(id) ? 'In your favorites. Click to update or remove' : 'Save this card to favorites'}">${favOf(id) ? '★' : '☆'}</button>
+          <button class="rc-ib" data-copycard="${id}" title="Copy this card${descendants(id).size ? ' (with its sub-assembly cards)' : ''}. Paste into any tab with 📋 Paste card or Ctrl+V">⧉</button>
           <button class="rc-ib del" data-delcard="${id}" title="Delete this card">🗑</button>
         </div>
         <div class="rc-stats">
@@ -98,26 +99,27 @@
       <div class="rc-body">
         <table class="rc-tbl"><thead><tr><th>Ingredient</th><th class="r">Weight</th><th class="r">Relative %</th><th class="r" title="Baker's percentage: weight relative to the base ingredient (100%)">Baker %</th><th></th></tr></thead><tbody>${rows}</tbody>
           ${a.items.length ? `<tfoot>${bset.length > 1 || a.baseName ? `<tr class="rc-base"><td><span class="rc-base-nm" data-basename="${id}" title="Click to rename the base">${NL.esc(bname)}${a.baseName ? ' <small>(Base)</small>' : ''}</span></td><td class="r w">${NL.fmt(baseAmt, 2)}<span class="u">g</span></td><td class="r pc">${NL.pct(baseAmt, c.batch)}</td><td class="r bk">100%</td><td class="x"><button class="rc-del rc-base-x" data-delbase="${id}" title="Remove this base (clears its name and B marks)">×</button></td></tr>` : ''}<tr class="rc-tot"><td>Total</td><td class="r w">${NL.fmt(c.batch, 2)}<span class="u">g</span></td><td class="r pc">100%</td><td class="r bk" title="Total formula percentage">${baseAmt > 0 ? NL.fmt(c.batch / baseAmt * 100, 1) + '%' : `<span class="bk-hint">${bset.length ? 'base has no weight' : 'press B to pick a base'}</span>`}</td><td></td></tr></tfoot>` : ''}</table>
-        ${c.batch > 0 ? `<div class="rc-bscale"><span class="rc-sc">Scale by yield <input class="num" inputmode="decimal" data-fk="ws-${id}" data-wscale="${id}" value="${+c.yielded.toFixed(2)}" title="Type the finished weight you need after cooking loss; the batch is calculated as yield ÷ (1 − loss %)"> g
-            <span class="faint">${+a.yieldLoss ? `→ batch ${NL.fmt(c.batch, 2)} g at ${NL.fmt(+a.yieldLoss, 1)}% loss` : '(no cooking loss)'}</span></span>
-          ${bset.length ? `<span class="rc-sc">Scale by base <b>${NL.esc(bname)}</b> <input class="num" inputmode="decimal" data-fk="bs-${id}" data-bscale="${id}" value="${+baseAmt.toFixed(2)}" title="Type the base weight you want; every Baker % is kept"> g</span>` : ''}
-          <span class="faint">ratios and % stay the same</span></div>` : ''}
-        <div class="rc-add">
-          <button data-addi="${id}">+ Ingredient</button>
-          <button data-basename="${id}" title="${a.baseName ? 'Rename the base' : 'Name the base (e.g. Total Flour), then press B on each ingredient that belongs to it'}">${a.baseName ? '✎ Rename base' : '+ Base'}</button>
-          <button class="s" data-adds="${id}">＋ New sub-recipe</button>
-          <button class="s" data-addl="${id}">↳ Link existing sub-recipe</button>
-        </div>
-        ${isRoot && !a.items.length ? `<div class="rc-sec guide"><b>Building from scratch</b><ol>
-          <li>Name your recipe in the title above.</li>
-          <li>Add raw ingredients with <b>+ Ingredient</b>, or drag them from the library onto this card.</li>
-          <li>Need a component (a sauce, a broth)? Click <b>＋ New sub-recipe</b>. It opens its own linked card where you add its ingredients.</li>
-          <li>Type the weight on each row. Batch, yield, % and nutrition update as you type.</li></ol></div>` : ''}
         <div class="rc-sec rc-fw ${fwErr[id] ? 'bad' : ''}">
           <label>${isRoot ? 'Final portion weight' : 'Final weight after cooking'} <input class="num" inputmode="decimal" data-fk="fw-${id}" data-fw="${id}" value="${+c.yielded.toFixed(1)}" placeholder="${+c.batch.toFixed(1)}"> g</label>
           <span class="rc-fw-res">from ${NL.fmt(c.batch)} g · <b>Yield ${NL.fmt(NL.yieldPct(a.yieldLoss), 1)}%</b> · Loss ${NL.fmt(+a.yieldLoss || 0, 1)}% (${NL.fmt(c.lossG)} g)</span>
           ${fwErr[id] ? `<div class="rc-fw-err">⚠ ${NL.esc(fwErr[id])}</div>` : ''}
         </div>
+        <div class="rc-add">
+          <button data-addi="${id}">+ Ingredient</button>
+          <button data-basename="${id}" title="${a.baseName ? 'Rename the base' : 'Name the base (e.g. Total Flour), then press B on each ingredient that belongs to it'}">${a.baseName ? '✎ Rename base' : '+ Base'}</button>
+          <button class="s" data-adds="${id}">＋ New sub-assembly</button>
+          <button class="s" data-addl="${id}">↳ Link existing sub-assembly</button>
+        </div>
+        ${isRoot && !a.items.length ? `<div class="rc-sec guide"><b>Building from scratch</b><ol>
+          <li>Name your assembly in the title above.</li>
+          <li>Add raw ingredients with <b>+ Ingredient</b>, or drag them from the library onto this card.</li>
+          <li>Need a component (a sauce, a broth)? Click <b>＋ New sub-assembly</b>. It opens its own linked card where you add its ingredients.</li>
+          <li>Type the weight on each row. Batch, yield, % and nutrition update as you type.</li></ol></div>` : ''}
+        ${c.batch > 0 ? `<div class="rc-sec rc-bscale"><span class="rc-sc">Scale by yield <input class="num" inputmode="decimal" data-fk="ws-${id}" data-wscale="${id}" value="${+c.yielded.toFixed(2)}" title="Type the finished weight you need after cooking loss; the batch is calculated as yield ÷ (1 − loss %)"> g
+            <span class="faint">${+a.yieldLoss ? `→ batch ${NL.fmt(c.batch, 2)} g at ${NL.fmt(+a.yieldLoss, 1)}% loss` : '(no cooking loss)'}</span></span>
+          ${bset.length ? `<span class="rc-sc">Scale by base <b>${NL.esc(bname)}</b> <input class="num" inputmode="decimal" data-fk="bs-${id}" data-bscale="${id}" value="${+baseAmt.toFixed(2)}" title="Type the base weight you want; every Baker % is kept"> g</span>` : ''}
+          <span class="faint">ratios and % stay the same</span></div>` : ''}
+        ${nutSection(id, a, c, isRoot)}
         <div class="rc-sec">
           <div class="rc-h">Procedure <button class="rc-mini" data-addstep="${id}">+ Step</button></div>
           <ol class="rc-steps">${(a.steps || []).map((s, i) => `<li><input data-fk="st-${id}-${i}" data-step="${id}:${i}" value="${NL.esc(s)}" placeholder="Describe this step…"><button class="rc-del" data-delstep="${id}:${i}">×</button></li>`).join('')}</ol>
@@ -127,6 +129,19 @@
           <textarea class="rc-notes" data-fk="nt-${id}" data-notes="${id}" placeholder="Add notes…">${NL.esc(a.notes || '')}</textarea>
         </div>
       </div>
+    </div>`;
+  }
+
+  // Nutrition for any card: a one-line summary per 100 g, or the full label when opened.
+  function nutSection(id, a, c, isRoot) {
+    if (!(c.yielded > 0)) return `<div class="rc-sec rc-nut"><div class="rc-h">Nutrition Facts</div><div class="faint">Add ingredients with weights to see nutrition.</div></div>`;
+    const p = i => c.perG[i] * 100;
+    const sum = `${Math.round(p(0))} kcal · Fat ${NL.fmt(p(1), 1)} g · Carbs ${NL.fmt(p(5), 1)} g · Protein ${NL.fmt(p(8), 1)} g · Sodium ${Math.round(p(4))} mg <span class="faint">per 100 g</span>`;
+    const basis = a.nutBasis || (isRoot ? 'all' : '100');
+    const seg = `<div class="nut-seg"><button class="${basis === 'all' ? 'on' : ''}" data-nutbasis="${id}:all">${isRoot ? 'Per portion' : 'Whole batch'}</button><label class="${basis === '100' ? 'on' : ''}" data-nutbasis="${id}:100" title="Type any serving size in grams">Per <input class="nut-g" inputmode="decimal" data-nutserv="${id}" data-fk="ns-${id}" value="${a.nutServing ?? 100}"> g</label></div>`;
+    return `<div class="rc-sec rc-nut ${a.showNut ? 'open' : ''}">
+      <div class="rc-h"><button class="rc-nut-tog" data-nuttog="${id}" title="${a.showNut ? 'Hide' : 'Show'} the Nutrition Facts label for this card">${a.showNut ? '▾' : '▸'} Nutrition Facts</button>${a.showNut ? seg : ''}</div>
+      ${a.showNut ? `<div class="rc-nut-body">${NL.labelHTML(S, calc, id, basis === '100' ? (a.nutServing ?? 100) : undefined)}</div>` : `<div class="rc-nut-sum" data-nuttog="${id}">${sum}</div>`}
     </div>`;
   }
 
@@ -157,19 +172,21 @@
 
   function drawTree() {
     const seen = new Set();
-    const item = (id, depth) => {
+    // BOM-style tree: `rails` says, for each ancestor level, whether a vertical line continues below this row
+    const item = (id, rails = [], last = true, depth = 0) => {
       const a = A(id); seen.add(id);
       const nIng = a.items.filter(it => it.ref.startsWith('ing:')).length;
       const kids = a.items.map(it => subIdOf(it.ref)).filter(s => s && A(s));
-      return `<div class="tr-item ${id === S.root ? 'root' : ''}" style="padding-left:${6 + depth * 14}px" data-goto="${id}">
+      const guide = depth ? `<span class="tg">${rails.map(r => `<i class="${r ? 'v' : ''}"></i>`).join('')}<i class="${last ? 'l' : 't'}"></i></span>` : '';
+      return `<div class="tr-item ${id === S.root ? 'root' : ''}" data-goto="${id}">${guide}
         <span class="sw" style="background:${colorOf(id)}"></span><span class="nm">${NL.esc(a.name)}</span><span class="faint">${nIng} ing</span></div>` +
-        (depth < 12 ? kids.map(k => item(k, depth + 1)).join('') : '');
+        (depth < 12 ? kids.map((k, i) => item(k, depth ? [...rails, !last] : [], i === kids.length - 1, depth + 1)).join('') : '');
     };
     let html = hasFinal() ? item(S.root, 0) : '', extra = '';
-    // unlinked cards: list top-level ones first (their sub-recipes nest under them), then anything left
+    // unlinked cards: list top-level ones first (their sub-assemblies nest under them), then anything left
     for (const id of Object.keys(S.asm)) if (!seen.has(id) && !parentsOf(id).length) extra += item(id, 0);
     for (const id of Object.keys(S.asm)) if (!seen.has(id)) extra += item(id, 0);
-    if (extra) html += `<div class="tr-sep">${hasFinal() ? 'Not used in the recipe' : 'No final card yet. Use the Final toggle on a card'}</div>` + extra;
+    if (extra) html += `<div class="tr-sep">${hasFinal() ? 'Not used in the assembly' : 'No final card yet. Use the Final toggle on a card'}</div>` + extra;
     if (!html) html = '<div class="tr-sep">No cards yet</div>';
     $('#tree').innerHTML = html;
   }
@@ -230,7 +247,7 @@
   }
 
   // ---------- sheet view: the same cards stacked top to bottom, in an order the chef sets ----------
-  const SHEET_EMPTY = `<div class="empty-hint sv-empty"><b>Blank recipe</b><span>Start with any card: a sub-recipe (a sauce, a broth) or the final dish. Use the <i>Final / Sub-recipe</i> switch on each card. Cards stack top to bottom; drag ⠿ to reorder.</span><button class="btn primary" data-emptyadd>＋ Add card</button></div>`;
+  const SHEET_EMPTY = `<div class="empty-hint sv-empty"><b>Blank assembly</b><span>Start with any card: a sub-assembly (a sauce, a broth) or the final dish. Use the <i>Final / Sub-assembly</i> switch on each card. Cards stack top to bottom; drag ⠿ to reorder.</span><button class="btn primary" data-emptyadd>＋ Add card</button></div>`;
   const PREFS = 'nlv2_sheet_prefs';
   const prefs = { links: 'jump', width: 'full' };
   try { Object.assign(prefs, JSON.parse(localStorage.getItem(PREFS)) || {}); } catch { }
@@ -242,7 +259,7 @@
   function savePrefs() { try { localStorage.setItem(PREFS, JSON.stringify(prefs)); } catch { } applyPrefs(); }
   applyPrefs();
 
-  // saved order first, then any new cards; with no saved order, final recipe then its sub-recipes depth-first
+  // saved order first, then any new cards; with no saved order, final assembly then its sub-assemblies depth-first
   function sheetOrder() {
     const ids = Object.keys(S.asm), have = new Set(ids), out = [], seen = new Set();
     const push = id => { if (have.has(id) && !seen.has(id)) { seen.add(id); out.push(id); return true; } return false; };
@@ -355,6 +372,7 @@
   function addItem(id, value, { focus = true } = {}) {
     const a = A(id);
     if (value === 'new-sub') return newSub(id);
+    if (value.startsWith('fav:')) return useFav(value.slice(4), id);
     if (value.startsWith('asm:') && wouldCycle(id, value.slice(4))) return NL.toast('That would create a loop');
     if (value.startsWith('asm:') && a.items.some(it => it.ref === value)) return NL.toast('Already linked');
     a.items.push({ ref: value, amount: 0 });
@@ -389,7 +407,7 @@
     const used = new Set(Object.values(S.asm).map(a => a.color));
     const color = COLORS.find(c => !used.has(c)) || COLORS[Object.keys(S.asm).length % COLORS.length];
     const el = cardsEl.querySelector(`[data-id="${pid}"]`);
-    S.asm[nid] = { name: 'New sub-recipe', items: [], yieldLoss: 0, steps: [], notes: '', color, x: p.x + CARDW + GAPX, y: p.y + (el ? el.offsetHeight : 200) - 120 };
+    S.asm[nid] = { name: 'New sub-assembly', items: [], yieldLoss: 0, steps: [], notes: '', color, x: p.x + CARDW + GAPX, y: p.y + (el ? el.offsetHeight : 200) - 120 };
     if (view === 'sheet') { S.asm[nid]._place = true; if (S.order) S.order.splice(S.order.indexOf(pid) + 1, 0, nid); }
     // avoid landing on top of another card
     const H = view === 'sheet' ? null : heights();
@@ -402,7 +420,7 @@
     render(); commit();
     goto(nid);
     setTimeout(() => { const t = cardsEl.querySelector(`[data-title="${nid}"]`); t?.focus(); t?.select(); }, 330);
-    NL.toast('Name the sub-recipe, then set its weight in "' + p.name + '"');
+    NL.toast('Name the sub-assembly, then set its weight in "' + p.name + '"');
   }
   function addCard() {
     const nid = NL.uid('s'), used = new Set(Object.values(S.asm).map(a => a.color));
@@ -417,7 +435,7 @@
     }
     render(); commit(); goto(nid);
     setTimeout(() => { const t = cardsEl.querySelector(`[data-title="${nid}"]`); t?.focus(); t?.select(); }, 330);
-    NL.toast(view === 'sheet' ? 'Card added at the bottom. Link it from the card that uses it with ↳ Link existing sub-recipe' : 'Card added. Drag its ● onto the recipe that uses it, or add it later with + Ingredient');
+    NL.toast(view === 'sheet' ? 'Card added at the bottom. Link it from the card that uses it with ↳ Link existing sub-assembly' : 'Card added. Drag its ● onto the assembly that uses it, or add it later with + Ingredient');
   }
   function linkCard(child, parent) {
     if (A(parent).items.some(it => it.ref === 'asm:' + child)) return NL.toast('Already linked');
@@ -431,37 +449,102 @@
   function updatePasteBtn() {
     const c = readClip(), btn = $('#pasteCard');
     btn.hidden = !c?.cards;
-    if (c?.cards) btn.title = `Paste "${c.cards[c.top].name}"${Object.keys(c.cards).length > 1 ? ` with ${Object.keys(c.cards).length - 1} sub-recipe card(s)` : ''} as a new unlinked card (Ctrl+V)`;
+    if (c?.cards) btn.title = `Paste "${c.cards[c.top].name}"${Object.keys(c.cards).length > 1 ? ` with ${Object.keys(c.cards).length - 1} sub-assembly card(s)` : ''} as a new unlinked card (Ctrl+V)`;
   }
   function copyCard(id) {
     const ids = [id, ...descendants(id)];
     const cards = Object.fromEntries(ids.map(k => [k, JSON.parse(JSON.stringify(A(k)))]));
     try { localStorage.setItem(CLIP, JSON.stringify({ top: id, cards })); } catch { return NL.toast('Could not copy the card'); }
     updatePasteBtn();
-    NL.toast(`Copied "${A(id).name}"${ids.length > 1 ? ` with ${ids.length - 1} sub-recipe card(s)` : ''}. Paste with 📋 Paste card or Ctrl+V`);
+    NL.toast(`Copied "${A(id).name}"${ids.length > 1 ? ` with ${ids.length - 1} sub-assembly card(s)` : ''}. Paste with 📋 Paste card or Ctrl+V`);
   }
-  function pasteCard() {
-    const clip = readClip(); if (!clip?.cards) return NL.toast('Nothing copied yet');
+  // Insert a set of cards ({ top, cards }) as fresh copies. With `parent`, the top card is linked into that card.
+  function insertCards(clip, { parent = null, suffix = '' } = {}) {
     const map = Object.fromEntries(Object.keys(clip.cards).map(k => [k, NL.uid('s')]));
-    const top = clip.cards[clip.top], r = vpEl.getBoundingClientRect(), ctr = vp.toWorld(r.left + r.width / 2, r.top + r.height / 3);
-    const dx = Math.round(ctr.x - CARDW / 2 - (top.x || 0)), dy = Math.round(ctr.y - 60 - (top.y || 0));
-    const used = new Set(Object.values(S.asm).map(a => a.color));
-    for (const [k, card] of Object.entries(clip.cards)) {
-      const n = JSON.parse(JSON.stringify(card)); delete n.kind;
+    const keys = [clip.top, ...Object.keys(clip.cards).filter(k => k !== clip.top)]; // top first, so board placement follows the links
+    const top = clip.cards[clip.top], used = new Set(Object.values(S.asm).map(a => a.color));
+    let dx = 0, dy = 0;
+    if (view === 'board' && !parent) {
+      const r = vpEl.getBoundingClientRect(), ctr = vp.toWorld(r.left + r.width / 2, r.top + r.height / 3);
+      dx = Math.round(ctr.x - CARDW / 2 - (top.x || 0)); dy = Math.round(ctr.y - 60 - (top.y || 0));
+    }
+    for (const k of keys) {
+      const n = JSON.parse(JSON.stringify(clip.cards[k])); delete n.kind; delete n.favId; delete n._place;
       n.items = n.items.filter(it => !subIdOf(it.ref) || map[subIdOf(it.ref)]).map(it => { const s = subIdOf(it.ref); return s ? { ...it, ref: 'asm:' + map[s] } : it; });
-      if (k === clip.top) n.name = n.name + ' (copy)';
-      if (!n.color || n.color === '#0f766e') n.color = COLORS.find(c => !used.has(c)) || COLORS[Object.keys(S.asm).length % COLORS.length];
+      if (k === clip.top) n.name = n.name + suffix;
+      if (!n.color || n.color === ROOT_COLOR) n.color = COLORS.find(c => !used.has(c)) || COLORS[Object.keys(S.asm).length % COLORS.length];
       used.add(n.color);
       n.x = (n.x || 0) + dx; n.y = (n.y || 0) + dy;
-      if (view === 'sheet') n._place = true;
+      if (view === 'sheet' || parent) n._place = true;
       S.asm[map[k]] = n;
     }
-    render(); commit(); goto(map[clip.top]);
-    NL.toast('Card pasted. Drag its ● onto a recipe to use it');
+    const nid = map[clip.top];
+    if (parent) {
+      A(parent).items.push({ ref: 'asm:' + nid, amount: 0 });
+      if (S.order) S.order.splice(S.order.indexOf(parent) + 1, 0, ...keys.map(k => map[k]));
+    }
+    render();
+    if (view === 'board' && parent) placeNewCards();
+    commit();
+    if (parent) focusAmt(parent, A(parent).items.length - 1); else goto(nid);
+    return nid;
+  }
+
+  // ---------- favorites: saved cards (with their sub-assembly cards) reusable in any assembly ----------
+  const FAV = 'nlv2_favorites';
+  let favCache = null;
+  const readFavs = () => favCache || (favCache = (() => { try { return JSON.parse(localStorage.getItem(FAV)) || []; } catch { return []; } })());
+  const favById = fid => readFavs().find(f => f.id === fid);
+  const favOf = id => { const f = A(id)?.favId; return f ? favById(f) : null; };
+  function writeFavs(list) {
+    try { localStorage.setItem(FAV, JSON.stringify(list)); } catch { NL.toast('Could not save favorites: browser storage is full'); return false; }
+    favCache = list; drawFavs(); return true;
+  }
+  function saveFav(id) {
+    const a = A(id), list = readFavs().slice(), existing = favOf(id), ids = [id, ...descendants(id)];
+    const entry = { id: existing?.id || NL.uid('f'), name: a.name, savedAt: Date.now(), top: id, cards: Object.fromEntries(ids.map(k => [k, JSON.parse(JSON.stringify(A(k)))])) };
+    if (existing) list[list.findIndex(f => f.id === existing.id)] = entry; else list.unshift(entry);
+    if (!writeFavs(list)) return;
+    a.favId = entry.id; render(); commit();
+    NL.toast(existing ? `Updated "${a.name}" in your favorites` : `Saved "${a.name}" to favorites${ids.length > 1 ? ` with ${ids.length - 1} sub-assembly card(s)` : ''}`);
+  }
+  function removeFav(fid) { const f = favById(fid); writeFavs(readFavs().filter(x => x.id !== fid)); render(); if (f) NL.toast(`Removed "${f.name}" from favorites`); }
+  function useFav(fid, parent) {
+    const f = favById(fid); if (!f) return NL.toast('That favorite no longer exists');
+    insertCards(f, { parent });
+    NL.toast(parent ? `Added "${f.name}" to "${A(parent).name}". Set its weight` : `Added "${f.name}" as a new card`);
+  }
+  function favMenu(id, anchor) {
+    document.querySelector('.fav-menu')?.remove();
+    const r = anchor.getBoundingClientRect(), m = document.createElement('div'); m.className = 'fav-menu';
+    m.innerHTML = `<button data-fm="up">↻ Update saved copy with this card</button><button data-fm="rm" class="danger">Remove from favorites</button>`;
+    m.style.left = Math.max(8, Math.min(r.right - 230, innerWidth - 240)) + 'px'; m.style.top = (r.bottom + 6) + 'px';
+    document.body.appendChild(m);
+    const off = e => { if (!m.contains(e.target)) close(); };
+    const close = () => { m.remove(); removeEventListener('pointerdown', off, true); };
+    setTimeout(() => addEventListener('pointerdown', off, true));
+    m.onclick = e => { const b = e.target.closest('[data-fm]'); if (!b) return; close(); if (b.dataset.fm === 'up') saveFav(id); else removeFav(A(id).favId); };
+  }
+  function drawFavs() {
+    const list = readFavs();
+    $('#favList').innerHTML = list.length ? list.map(f => {
+      const t = f.cards[f.top], nIng = t.items.filter(it => it.ref.startsWith('ing:')).length, nSub = Object.keys(f.cards).length - 1;
+      return `<div class="fav-item" draggable="true" data-favdrag="${f.id}" title="Drag onto a card to add it as a sub-assembly, or click ＋ to add it as a new card">
+        <span class="fav-star">★</span><span class="nm">${NL.esc(f.name)}</span><span class="faint">${nIng} ing${nSub ? ` · ${nSub} sub` : ''}</span>
+        <button class="fav-b" data-favadd="${f.id}" title="Add to this assembly as a new card">＋</button><button class="fav-b x" data-favdel="${f.id}" title="Remove from favorites">×</button></div>`;
+    }).join('') : '<div class="fav-empty">Click ☆ on any card to save it here, then reuse it in any assembly.</div>';
+  }
+  $('#favList').addEventListener('dragstart', e => { const it = e.target.closest('[data-favdrag]'); if (it) { e.dataTransfer.setData('text/plain', 'fav:' + it.dataset.favdrag); e.dataTransfer.effectAllowed = 'copy'; } });
+  addEventListener('storage', e => { if (e.key === FAV) { favCache = null; drawFavs(); render(); } });
+
+  function pasteCard() {
+    const clip = readClip(); if (!clip?.cards) return NL.toast('Nothing copied yet');
+    insertCards(clip, { suffix: ' (copy)' });
+    NL.toast(view === 'sheet' ? 'Card pasted at the bottom' : 'Card pasted. Drag its ● onto an assembly to use it');
   }
   addEventListener('storage', e => { if (e.key === CLIP) updatePasteBtn(); });
 
-  // ---------- compare recipes / versions ----------
+  // ---------- compare assemblies / versions ----------
   function recipeStats(state) {
     if (!state.root || !state.asm[state.root]) return null;
     const c = NL.calc(state), rc = c[state.root];
@@ -475,7 +558,7 @@
   function openCompare() {
     clearTimeout(typingT); commit();
     const all = wb.all(), tabs = all.filter(t => t.state.root && t.state.asm[t.state.root]), skipped = all.filter(t => !tabs.includes(t));
-    if (tabs.length < 2) return NL.toast(skipped.length ? 'Compare needs two recipes with a Final card. Use the Final toggle on a card' : 'Make a second tab first (＋ New recipe or ⎘ New Version), then compare');
+    if (tabs.length < 2) return NL.toast(skipped.length ? 'Compare needs two assemblies with a Final card. Use the Final toggle on a card' : 'Make a second tab first (＋ New assembly or ⎘ New Version), then compare');
     const pick = new Set(tabs.slice(0, 4).map(t => t.id));
     let baseId = tabs[0].id, diffOnly = false;
     const ov = document.createElement('div'); ov.className = 'cmp-ov';
@@ -509,24 +592,24 @@
       };
       const ingIds = [...new Set(cols.flatMap(t => Object.keys(st[t.id].ing)))].sort((a, b) => (base?.ing[b] || 0) - (base?.ing[a] || 0));
       const sec = t => `<tr><td class="cmp-h" colspan="${cols.length + 1}">${t}</td></tr>`;
-      const body = !cols.length ? '<div class="cmp-empty">Tick at least one recipe above.</div>' : `<div class="cmp-scroll"><table class="cmp-tbl">
-        <thead><tr><th></th>${cols.map(t => `<th>${NL.esc(t.name)}${t.id === baseId ? '<small>baseline</small>' : `<button class="cmp-mk" data-base="${t.id}" title="Compare everything against this recipe">set as baseline</button>`}</th>`).join('')}</tr></thead>
+      const body = !cols.length ? '<div class="cmp-empty">Tick at least one assembly above.</div>' : `<div class="cmp-scroll"><table class="cmp-tbl">
+        <thead><tr><th></th>${cols.map(t => `<th>${NL.esc(t.name)}${t.id === baseId ? '<small>baseline</small>' : `<button class="cmp-mk" data-base="${t.id}" title="Compare everything against this assembly">set as baseline</button>`}</th>`).join('')}</tr></thead>
         <tbody>${sec('Summary')}
           ${row('Portion / batch weight', s => s.batch, ' g')}${row('Final weight (yield)', s => s.yielded, ' g')}${row('Cooking loss', s => s.loss, '%')}
-          ${row('Calories per portion', s => s.nut[0], ' kcal', 0)}${row('Calories per 100 g', s => s.kcal100, ' kcal', 0)}${row('Cards in recipe', s => s.cards, '', 0)}
+          ${row('Calories per portion', s => s.nut[0], ' kcal', 0)}${row('Calories per 100 g', s => s.kcal100, ' kcal', 0)}${row('Cards in assembly', s => s.cards, '', 0)}
           ${sec('Nutrition per portion')}
           ${NL.NUTRIENTS.slice(1).map((n, k) => row(n.label, s => s.nut[k + 1], ' ' + n.unit, n.unit === 'mg' ? 0 : 1)).join('')}
           ${sec('Raw ingredients per portion')}
           ${ingIds.map(iid => row(NL.esc(NL.ingMap[iid]?.name || iid), s => s.ing[iid] ?? null, ' g', 2)).join('')}</tbody>
       </table></div>`;
       ov.innerHTML = `<div class="cmp">
-        <div class="cmp-top"><b>⇄ Compare recipes</b><span class="spacer"></span>
+        <div class="cmp-top"><b>⇄ Compare assemblies</b><span class="spacer"></span>
           <label class="cmp-opt"><input type="checkbox" id="cmpDiff" ${diffOnly ? 'checked' : ''}> Only show differences</label>
           <button class="btn ghost cmp-x" title="Close (Esc)">×</button></div>
         <div class="cmp-pick">${tabs.map(t => `<label class="cmp-chip ${pick.has(t.id) ? 'on' : ''}"><input type="checkbox" data-pick="${t.id}" ${pick.has(t.id) ? 'checked' : ''}>${NL.esc(t.name)}${t.active ? ' <small>(open)</small>' : ''}</label>`).join('')}</div>
         ${body}
         ${skipped.length ? `<div class="cmp-foot">Not shown (no Final card yet): ${skipped.map(t => NL.esc(t.name)).join(', ')}</div>` : ''}
-        <div class="cmp-foot">▲ / ▼ show the difference from the baseline column. Ingredient grams are the raw amounts that end up in one portion, including those inside sub-recipes.</div>
+        <div class="cmp-foot">▲ / ▼ show the difference from the baseline column. Ingredient grams are the raw amounts that end up in one portion, including those inside sub-assemblies.</div>
       </div>`;
       ov.querySelector('.cmp-x').onclick = close;
       ov.querySelector('#cmpDiff').onchange = e => { diffOnly = e.target.checked; draw(); };
@@ -565,23 +648,24 @@
       const prev = hasFinal() ? S.root : null;
       if (prev && (!A(prev).color || A(prev).color === ROOT_COLOR)) A(prev).color = nextColor();
       S.root = id;
-      NL.toast(`"${a.name}" is now the final recipe${prev ? `. "${A(prev).name}" is now a sub-recipe` : ''}`);
+      NL.toast(`"${a.name}" is now the final assembly${prev ? `. "${A(prev).name}" is now a sub-assembly` : ''}`);
     } else {
       if (S.root !== id) return;
       if (!a.color || a.color === ROOT_COLOR) a.color = nextColor();
       S.root = null;
-      NL.toast(`"${a.name}" is now a sub-recipe. Mark any card as Final when you're ready`);
+      NL.toast(`"${a.name}" is now a sub-assembly. Mark any card as Final when you're ready`);
     }
     render(); commit();
   }
   function openPicker(id, anchor, mode) {
     const r = anchor.getBoundingClientRect();
     const subs = Object.entries(S.asm).filter(([sid]) => sid !== S.root && !wouldCycle(id, sid) && !A(id).items.some(it => it.ref === 'asm:' + sid))
-      .map(([sid, a]) => ({ value: 'asm:' + sid, label: a.name, color: colorOf(sid), sub: 'sub-recipe' }));
+      .map(([sid, a]) => ({ value: 'asm:' + sid, label: a.name, color: colorOf(sid), sub: 'sub-assembly' }));
+    const favs = { label: '★ Favorites', items: readFavs().map(f => ({ value: 'fav:' + f.id, label: f.name, color: '#f59e0b', sub: 'favorite' })) };
     const groups = mode === 'link'
-      ? [{ label: 'Existing sub-recipes', items: subs }, { label: 'Create', items: [{ value: 'new-sub', label: '＋ New sub-recipe', color: '#7c5cff', always: true }] }]
-      : [{ label: 'Sub-recipes', items: subs }, ...NL.ingredientGroups()];
-    NL.picker({ x: r.left, y: r.bottom + 4, groups, placeholder: mode === 'link' ? 'Search sub-recipes…' : 'Search ingredients…', onPick: v => addItem(id, v) });
+      ? [{ label: 'Existing sub-assemblies', items: subs }, favs, { label: 'Create', items: [{ value: 'new-sub', label: '＋ New sub-assembly', color: '#7c5cff', always: true }] }]
+      : [{ label: 'Sub-assemblies', items: subs }, favs, ...NL.ingredientGroups()];
+    NL.picker({ x: r.left, y: r.bottom + 4, groups, placeholder: mode === 'link' ? 'Search sub-assemblies…' : 'Search ingredients…', onPick: v => addItem(id, v) });
   }
 
   // ---------- interactions ----------
@@ -622,6 +706,7 @@
     }
     else if (d.title) { A(d.title).name = e.target.value; renderKeep(); }
     else if (d.fw) { setFinalWeight(d.fw, e.target.value); renderKeep(); }
+    else if (d.nutserv) { const v = NL.parseNum(e.target.value), a = A(d.nutserv); if (v > 0) { a.nutServing = v; a.nutBasis = '100'; renderKeep(); wb.save(S); hist.sync(); } }
     else if (d.bk) {
       const [id, i] = d.bk.split(':'), a = A(id), base = baseTotal(a), v = e.target.value.trim();
       const pv = NL.parseNum(v);
@@ -696,7 +781,12 @@
     if ((b = q('[data-addl]'))) return openPicker(b.dataset.addl, b, 'link');
     if ((b = q('[data-adds]'))) return newSub(b.dataset.adds);
     if ((b = q('[data-delcard]'))) return deleteCard(b.dataset.delcard);
+    if ((b = q('[data-nuttog]'))) { const a = A(b.dataset.nuttog); a.showNut = !a.showNut; render(); wb.save(S); hist.sync(); return; }
+    if ((b = q('[data-nutbasis]'))) { const [id, v] = b.dataset.nutbasis.split(':'); if (A(id).nutBasis === v) return; A(id).nutBasis = v; NL.keepFocus(render); wb.save(S); hist.sync(); return; }
     if ((b = q('[data-copycard]'))) return copyCard(b.dataset.copycard);
+    if ((b = q('[data-fav]'))) { const id = b.dataset.fav; return favOf(id) ? favMenu(id, b) : saveFav(id); }
+    if ((b = q('[data-favadd]'))) return useFav(b.dataset.favadd, null);
+    if ((b = q('[data-favdel]'))) { const f = favById(b.dataset.favdel); if (f && confirm(`Remove "${f.name}" from favorites?`)) removeFav(f.id); return; }
     if ((b = q('[data-cut]'))) { const [pid, sid] = b.dataset.cut.split(':'); return unlink(pid, sid); }
     if ((b = q('[data-kind]'))) { const [k, id] = b.dataset.kind.split(':'); return setKind(id, k); }
     if ((b = q('[data-emptyadd]'))) return addCard();
@@ -719,7 +809,8 @@
     cardsEl.querySelectorAll('.drop').forEach(x => x.classList.remove('drop'));
     const v = e.dataTransfer.getData('text/plain'), c = e.target.closest?.('.rcard');
     if (!v) return;
-    if (!c) return NL.toast('Drop the ingredient onto a recipe card');
+    if (v.startsWith('fav:')) return useFav(v.slice(4), c?.dataset.id || null);
+    if (!c) return NL.toast('Drop the ingredient onto an assembly card');
     addItem(c.dataset.id, v);
   });
 
@@ -753,12 +844,25 @@
   $('#addCard').onclick = () => addCard();
   $('#pasteCard').onclick = () => pasteCard();
   $('#compare').onclick = () => openCompare();
+  // light / dark theme (first visit follows the computer's setting; the choice is remembered)
+  function showTheme() {
+    const dark = document.documentElement.dataset.theme === 'dark';
+    $('#themeBtn').textContent = dark ? '☀' : '☾';
+    $('#themeBtn').title = dark ? 'Switch to light mode' : 'Switch to dark mode';
+  }
+  $('#themeBtn').onclick = () => {
+    const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = t;
+    try { localStorage.setItem('nlv2_theme', t); } catch { }
+    showTheme();
+  };
+  showTheme();
   // hide / show the left panel (remembered per browser)
   const SIDE = 'nlv2_side_hidden';
   function setSide(hidden) {
     $('#cmain').classList.toggle('hide-side', hidden);
     $('#sideTog').textContent = hidden ? '›' : '‹';
-    $('#sideTog').title = hidden ? 'Show the panel (recipe structure and ingredient library)' : 'Hide the panel';
+    $('#sideTog').title = hidden ? 'Show the panel (assembly structure and ingredient library)' : 'Hide the panel';
     try { localStorage.setItem(SIDE, hidden ? '1' : ''); } catch { }
     setTimeout(drawLinks, 220);
   }
@@ -766,19 +870,19 @@
   try { if (localStorage.getItem(SIDE)) setSide(true); } catch { }
   // TEMP: reset-to-sample button (remove with #resetSample in index.html)
   $('#resetSample').onclick = () => {
-    if (!confirm('Replace this tab with the original sample recipe? Other tabs are not touched. You can undo with Ctrl+Z.')) return;
+    if (!confirm('Replace this tab with the original sample assembly? Other tabs are not touched. You can undo with Ctrl+Z.')) return;
     S = fromSample(); arrange(); commit(); if (view === 'board') vp.fit(bounds(), 40, { min: 0.8, align: 'left' });
-    NL.toast('Sample recipe restored');
+    NL.toast('Sample assembly restored');
   };
   $('#newIng').onclick = async () => { const i = await NL.ingredientForm(); if (i) NL.toast(`"${i.name}" added. Drag it from the list.`); };
   document.addEventListener('nl:ingredients', drawLib);
 
-  // ---------- recipes as tabs (workbook) ----------
-  const nameOf = st => st.asm[st.root]?.name || st.draftName || 'Untitled recipe';
-  const blank = () => ({ root: null, draftName: 'Untitled recipe ' + (wb.count() + 1), asm: {} });
+  // ---------- assemblies as tabs (workbook) ----------
+  const nameOf = st => st.asm[st.root]?.name || st.draftName || 'Untitled assembly';
+  const blank = () => ({ root: null, draftName: 'Untitled assembly ' + (wb.count() + 1), asm: {} });
   const sample = () => Object.assign(fromSample(), { _arrange: true });
   function newRecipe() { wb.add(blank()); }
-  window.NL_resetSample = () => { wb.add(sample()); NL.toast('Sample recipe opened in a new tab'); };
+  window.NL_resetSample = () => { wb.add(sample()); NL.toast('Sample assembly opened in a new tab'); };
 
   function openState(state) {
     S = state;
@@ -803,6 +907,7 @@
     onNew: newRecipe,
   });
   drawLib();
+  drawFavs();
   updatePasteBtn();
   openState(wb.current());
 })();

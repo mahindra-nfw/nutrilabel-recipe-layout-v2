@@ -101,7 +101,7 @@ NL.flatten = function (model, calc, rootId) {
   const out = {};
   (function walk(id, factor, depth) {
     if (depth > 20) return;
-    const a = model.asm[id]; // yield loss is treated as moisture, so it scales sub-recipe usage
+    const a = model.asm[id]; // yield loss is treated as moisture, so it scales sub-assembly usage
     for (const it of a.items) {
       const [t, rid] = it.ref.split(':');
       if (t === 'ing') out[rid] = (out[rid] || 0) + (+it.amount || 0) * factor;
@@ -135,8 +135,8 @@ NL.esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&l
 NL.uid = (p = 'n') => p + Math.random().toString(36).slice(2, 8);
 
 // FDA-style nutrition facts panel (US format, simplified rounding).
-NL.labelHTML = function (model, calc, rootId) {
-  const c = calc[rootId]; const serving = c.yielded; const t = c.perG.map(v => v * serving);
+NL.labelHTML = function (model, calc, rootId, servingG) {
+  const c = calc[rootId]; const serving = servingG ?? c.yielded; const t = c.perG.map(v => v * serving);
   const rows = NL.NUTRIENTS.slice(1).map((n, i) => {
     const v = t[i + 1];
     const dv = n.dv ? Math.round(v / n.dv * 100) + '%' : '';
@@ -303,9 +303,9 @@ NL.history = function (save, get, set) {
   };
 };
 
-// Excel-style workbook: one recipe per tab, tab bar pinned to the bottom of the page.
+// Excel-style workbook: one assembly per tab, tab bar pinned to the bottom of the page.
 // opts: key, legacyKey, sample(), nameOf(state), onSwitch(state), onNew(), beforeSwitch()
-// A tab shows its own `title` once renamed; until then it follows the recipe name.
+// A tab shows its own `title` once renamed; until then it follows the assembly name.
 NL.workbook = function (o) {
   const clone = x => JSON.parse(JSON.stringify(x));
   let book = NL.load(o.key);
@@ -326,10 +326,10 @@ NL.workbook = function (o) {
 
   function draw() {
     if (renaming) return;
-    bar.innerHTML = `<button class="tb-add" data-new title="New recipe">+</button>
+    bar.innerHTML = `<button class="tb-add" data-new title="New assembly">+</button>
       <div class="tb-tabs">${book.tabs.map(t => `<div class="tb-tab ${t.id === book.active ? 'active' : ''}" draggable="true" data-tab="${t.id}" title="Click to open · double-click to rename · right-click for more">
-        <span class="tb-name">${NL.esc(name(t))}</span><button class="tb-x" data-close="${t.id}" title="Delete recipe">×</button></div>`).join('')}</div>
-      <span class="tb-hint">${book.tabs.length} recipe${book.tabs.length > 1 ? 's' : ''} · double-click a tab to rename</span>`;
+        <span class="tb-name">${NL.esc(name(t))}</span><button class="tb-x" data-close="${t.id}" title="Delete assembly">×</button></div>`).join('')}</div>
+      <span class="tb-hint">${book.tabs.length} assembly${book.tabs.length > 1 ? 's' : ''} · double-click a tab to rename</span>`;
     bar.querySelector('.tb-tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
   function switchTo(id) {
@@ -347,8 +347,8 @@ NL.workbook = function (o) {
     o.onSwitch(state);
   }
   function close(id) {
-    if (book.tabs.length === 1) return NL.toast('You need at least one recipe tab');
-    if (!confirm(`Delete the recipe "${name(tab(id))}"? This can't be undone.`)) return;
+    if (book.tabs.length === 1) return NL.toast('You need at least one assembly tab');
+    if (!confirm(`Delete the assembly "${name(tab(id))}"? This can't be undone.`)) return;
     const i = book.tabs.findIndex(t => t.id === id);
     book.tabs.splice(i, 1);
     if (id === book.active) { book.active = book.tabs[Math.min(i, book.tabs.length - 1)].id; live = null; persist(); draw(); o.onSwitch(tab(book.active).state); }
@@ -460,7 +460,7 @@ NL.connectDrag = function ({ e, vp, linksEl, from, color, targetSel, selfEl, onD
   const up = () => {
     removeEventListener('pointermove', mv); removeEventListener('pointerup', up);
     path.remove(); target?.classList.remove('drop');
-    if (target) onDrop(target); else NL.toast('Drop the handle onto the recipe card that uses it');
+    if (target) onDrop(target); else NL.toast('Drop the handle onto the assembly card that uses it');
   };
   addEventListener('pointermove', mv); addEventListener('pointerup', up);
   mv(e);
