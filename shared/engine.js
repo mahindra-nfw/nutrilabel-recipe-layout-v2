@@ -8,6 +8,34 @@ NL.CUSTOM_CAT = 'My Ingredients';
 NL.CAT_COLORS[NL.CUSTOM_CAT] = '#0ea5e9';
 try { (JSON.parse(localStorage.getItem(NL.CUSTOM_KEY)) || []).forEach(i => NL.INGREDIENTS.push(i)); } catch { }
 NL.ingMap = Object.fromEntries(NL.INGREDIENTS.map(i => [i.id, i]));
+// ---- cost: price per kg in USD. Sample prices ship with the app; prices you enter are kept per browser.
+NL.PRICE_KEY = 'nlv3_prices';
+NL.SAMPLE_PRICES = { water: 0, chicken_stock: 1.5, pork_bone_broth: 3, soy_sauce: 3.2, mirin: 4.5, sake: 5, rice_vinegar: 3, fish_sauce: 4, lemon_juice: 3.5, coconut_milk: 3.2, white_miso: 6.5, red_miso_powder: 18, dashi_powder: 22, yeast_extract: 15, ajitop: 14, ultra_spicy_sauce: 9, topping_spicy_miso: 12, gochujang: 7, sriracha: 6, oyster_sauce: 5, salt: 0.6, sugar: 1.1, brown_sugar: 1.6, honey: 7, black_pepper: 14, chili_flakes: 12, msg: 3, sesame_seeds: 7, hazelnuts: 16, coriander_seeds: 9, ground_ginger: 18, white_pepper: 20, sesame_oil: 9, olive_oil: 8, vegetable_oil: 2.2, butter: 9, lard: 3.5, onion_sweet: 2.4, garlic: 6, ginger: 5, scallion: 4.5, carrot: 1.4, cabbage: 1.2, bean_sprouts: 2.5, shiitake: 12, corn: 2.5, spinach: 5, tomato: 3, bell_pepper: 4.5, potato: 1.3, fried_shallots: 10, nori: 45, chicken_breast_cooked: 11, chicken_thigh: 5.5, pork_belly: 9, ground_pork: 6, ground_beef: 9.5, salmon: 22, shrimp: 18, egg: 4.5, tofu_firm: 4, fish_cake: 12, ramen_noodles: 4, udon: 3.5, jasmine_rice: 2.2, ap_flour: 0.9, bread_flour: 1.1, whole_wheat_flour: 1.3, instant_yeast: 9, cornstarch: 2, panko: 4.5, potato_starch: 2.8, whole_milk: 1.1, heavy_cream: 5, parmesan: 22, cheddar: 11, potassium_sorbate: 12, citric_acid: 4, xanthan_gum: 25, tapioca_maltodextrin: 14, sodium_benzoate: 6 };
+NL.priceOverrides = (() => { try { return JSON.parse(localStorage.getItem(NL.PRICE_KEY)) || {}; } catch { return {}; } })();
+NL.price = id => NL.priceOverrides[id] ?? NL.ingMap[id]?.price ?? NL.SAMPLE_PRICES[id] ?? null;
+NL.isSamplePrice = id => !(id in NL.priceOverrides) && NL.ingMap[id]?.price == null && NL.SAMPLE_PRICES[id] != null;
+NL.setPrice = (id, v) => { NL.priceOverrides[id] = v; try { localStorage.setItem(NL.PRICE_KEY, JSON.stringify(NL.priceOverrides)); } catch { } };
+// Batch cost of every assembly, cost per gram of its finished weight (so cooking loss raises it), and ingredients without a price.
+NL.cost = function (model, calc) {
+  const res = {};
+  const go = (id, seen) => {
+    if (res[id]) return res[id];
+    if (seen.has(id)) return { batch: 0, perG: 0, missing: 0 };
+    seen.add(id);
+    let batch = 0, missing = 0;
+    for (const it of model.asm[id].items) {
+      const [t, r] = it.ref.split(':'), amt = +it.amount || 0;
+      if (t === 'ing') { const p = NL.price(r); if (p == null) { if (amt > 0) missing++; } else batch += amt / 1000 * p; }
+      else if (model.asm[r]) { const s = go(r, seen); batch += amt * s.perG; missing += s.missing; }
+    }
+    const y = calc[id]?.yielded || 0;
+    return (res[id] = { batch, perG: y > 0 ? batch / y : 0, missing });
+  };
+  Object.keys(model.asm).forEach(id => go(id, new Set()));
+  return res;
+};
+NL.money = v => !isFinite(v) ? '—' : v > 0 && v < 0.01 ? '<$0.01' : '$' + v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 NL.refreshCategories = () => { NL.CATEGORIES = [...new Set([...NL.INGREDIENTS.map(i => i.cat), NL.CUSTOM_CAT])]; };
 NL.refreshCategories();
 NL.addIngredient = function (ing) {
@@ -34,6 +62,7 @@ NL.ingredientForm = function (initialName = '') {
         <label class="nif-f"><span>Category</span><select name="cat">${cats}</select></label>
         <label class="nif-f"><span>Vendor (optional)</span><input name="vendor" placeholder="e.g. Sysco"></label>
       </div>
+      <label class="nif-f"><span>Price per kg in $ (optional)</span><input name="price" inputmode="decimal" placeholder="e.g. 4.50"></label>
       <div class="nif-h">Nutrition per 100 g <small>blank = 0</small></div>
       <div class="nif-grid">${nut}</div>
       <div class="nl-prompt-btns"><button type="submit" class="btn primary">Save ingredient</button><button type="button" class="btn ghost nl-prompt-cancel">Cancel</button></div>
@@ -47,7 +76,8 @@ NL.ingredientForm = function (initialName = '') {
       const name = nameIn.value.trim(); if (!name) return nameIn.focus();
       if (NL.INGREDIENTS.some(i => i.name.toLowerCase() === name.toLowerCase()) && !confirm(`An ingredient called "${name}" already exists. Create another one anyway?`)) return;
       const n = NL.NUTRIENTS.map((_, k) => Math.max(0, parseFloat(f.querySelector(`[data-n="${k}"]`).value) || 0));
-      done(NL.addIngredient({ id: NL.uid('c'), name, cat: f.elements.cat.value, vendor: f.elements.vendor.value.trim() || null, n, custom: true }));
+      const price = NL.parseNum(f.elements.price.value);
+      done(NL.addIngredient({ id: NL.uid('c'), name, cat: f.elements.cat.value, vendor: f.elements.vendor.value.trim() || null, n, custom: true, price: isFinite(price) && price >= 0 ? price : null }));
     };
     ov.querySelector('.nl-prompt-cancel').onclick = () => done(null);
     ov.addEventListener('pointerdown', e => { if (e.target === ov) done(null); });
@@ -329,7 +359,7 @@ NL.workbook = function (o) {
     bar.innerHTML = `<button class="tb-add" data-new title="New assembly">+</button>
       <div class="tb-tabs">${book.tabs.map(t => `<div class="tb-tab ${t.id === book.active ? 'active' : ''}" draggable="true" data-tab="${t.id}" title="Click to open · double-click to rename · right-click for more">
         <span class="tb-name">${NL.esc(name(t))}</span><button class="tb-x" data-close="${t.id}" title="Delete assembly">×</button></div>`).join('')}</div>
-      <span class="tb-hint">${book.tabs.length} assembly${book.tabs.length > 1 ? 's' : ''} · double-click a tab to rename</span>`;
+      <span class="tb-hint">${book.tabs.length} ${book.tabs.length > 1 ? 'assemblies' : 'assembly'} · double-click a tab to rename</span>`;
     bar.querySelector('.tb-tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
   function switchTo(id) {

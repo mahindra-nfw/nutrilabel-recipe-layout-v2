@@ -35,8 +35,8 @@
 .link { fill: none; stroke-width: 2.2; opacity: .75; }
 .link-dot { stroke: var(--panel); stroke-width: 2; }
 
-.rcard { position: absolute; width: 540px; background: var(--panel); border-radius: 12px; box-shadow: var(--shadow); border: 1px solid var(--line); border-top: 5px solid var(--c); }
-.rcard.final { width: 560px; border-top-width: 8px; }
+.rcard { position: absolute; width: 620px; background: var(--panel); border-radius: 12px; box-shadow: var(--shadow); border: 1px solid var(--line); border-top: 5px solid var(--c); }
+.rcard.final { width: 640px; border-top-width: 8px; }
 .rcard.drop { box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 30%, transparent), var(--shadow); }
 .rcard.flash { animation: flash 1.1s ease; }
 @keyframes flash { 0%, 60% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--c) 45%, transparent), var(--shadow-lg); } 100% { box-shadow: var(--shadow); } }
@@ -199,7 +199,7 @@ body:not(.view-sheet) .sheetview { display: none; }
 .sheetview .rcard { position: relative; left: auto; top: auto; }
 .sheetview .port { display: none; }
 .w-full .rcard, .w-full .rcard.final { width: 100%; }
-.w-card .rcard { width: 540px; } .w-card .rcard.final { width: 560px; }
+.w-card .rcard { width: 540px; } .w-card .rcard.final { width: 640px; }
 .lk-indent .sv-inner { padding-left: 42px; }
 .lk-indent .rcard { margin-left: calc(var(--depth, 0) * 40px); }
 .w-full.lk-indent .rcard { width: calc(100% - var(--depth, 0) * 40px); }
@@ -289,3 +289,11 @@ body:not(.view-sheet) .sheetview { display: none; }
 #nut .lb-title { font-size: clamp(26px, 9cqi, 40px); }
 #nut .lb-cal b { font-size: clamp(28px, 9.5cqi, 42px); }
 #nut .lb-cal span { font-size: clamp(18px, 5.5cqi, 24px); }
+
+/* cost */
+.rc-tbl .cost { width: 72px; white-space: nowrap; font-size: 12px; }
+.cost-b { border: 0; background: none; padding: 1px 3px; border-radius: 4px; font: inherit; color: var(--text); cursor: pointer; }
+.cost-b:hover { background: var(--accent-soft); color: var(--accent); }
+.cost-b.sample { color: var(--muted); border-bottom: 1px dotted var(--faint); border-radius: 0; }
+.cost-b.none { color: var(--accent); font-weight: 600; }
+.rc-tot .cost, .rc-cost b { color: var(--ok); }

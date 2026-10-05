@@ -1,14 +1,14 @@
 // NutriLabel assembly builder — assembly cards (Modernist Cuisine style) linked like a flow.
 // The final assembly is the main card; every sub-assembly row links to its own card.
 (function () {
-  const CARDW = 540, GAPX = 140, GAPY = 36;
+  const CARDW = 620, GAPX = 140, GAPY = 36;
   const COLORS = ['#3b82f6', '#ef4444', '#8b5cf6', '#f59e0b', '#14b8a6', '#ec4899', '#f97316', '#6366f1'];
   const $ = s => document.querySelector(s);
   const vpEl = $('#vp'), worldEl = $('#world'), linksEl = $('#links'), boardCardsEl = $('#cards');
   const svEl = $('#sheetView'), svInnerEl = $('#svInner'), svCardsEl = $('#svCards'), svLinksEl = $('#svLinks');
   let cardsEl = boardCardsEl, view = 'board', orderIdx = {}, depthMap = {}; // view: 'board' (canvas) or 'sheet' (stacked)
 
-  let S, calc, hist;
+  let S, calc, hist, cost = {};
   const fwErr = {}; // card id -> message while the typed final weight is invalid
   const amtErr = {}; // 'card:row' -> message while a typed ingredient weight is invalid
   const fwStart = {}; // card id -> yieldLoss when editing began, restored if the entry is invalid
@@ -36,7 +36,7 @@
 
   // ---------- rendering ----------
   function render() {
-    calc = NL.calc(S);
+    calc = NL.calc(S); cost = NL.cost(S, calc);
     if (view === 'sheet') {
       const ord = sheetOrder(); orderIdx = Object.fromEntries(ord.map((id, k) => [id, k])); depthMap = depths();
       cardsEl.innerHTML = ord.length ? ord.map(cardHTML).join('') : SHEET_EMPTY;
@@ -51,7 +51,7 @@
   const renderKeep = () => NL.keepFocus(render);
 
   function cardHTML(id) {
-    const a = A(id), c = calc[id], isRoot = id === S.root;
+    const a = A(id), c = calc[id], cc = cost[id] || { batch: 0, perG: 0, missing: 0 }, isRoot = id === S.root;
     const parents = parentsOf(id);
     const kind = `<div class="rc-kind" title="Is this the final assembly or a sub-assembly?"><button class="${isRoot ? 'on' : ''}" data-kind="final:${id}">Final</button><button class="${isRoot ? '' : 'on'}" data-kind="sub:${id}">Sub-assembly</button></div>`;
     const kicker = isRoot ? 'Final assembly · per portion'
@@ -65,7 +65,7 @@
       const bk = inBase
         ? `<td class="r bk base"><span class="bk-base" title="Share of the base (${NL.esc(bname)})">${bpct == null ? '—' : NL.fmt(bpct, 2) + '%'}</span>${bbtn}</td>`
         : `<td class="r bk"><span class="bk-in"><input class="num" inputmode="decimal" data-fk="bk-${id}-${idx}" data-bk="${id}:${idx}" value="${bpct ?? ''}" ${baseAmt > 0 ? 'title="Baker %: type a % to set this weight from the base"' : `disabled placeholder="—" title="${bset.length ? 'The base has no weight yet' : 'Press B on an ingredient to choose the base'}"`}>%</span>${bbtn}</td>`;
-      const pct = `<td class="r pc">${NL.pct(+it.amount || 0, c.batch)}</td>${bk}`;
+      const pct = `<td class="r pc">${NL.pct(+it.amount || 0, c.batch)}</td>${bk}${costCell(it)}`;
       const aerr = amtErr[`${id}:${idx}`];
       const amt = `<td class="r w"><input class="num ${aerr ? 'bad' : ''}" inputmode="decimal" data-fk="amt-${id}-${idx}" data-amt="${id}:${idx}" value="${it.amount}" ${aerr ? `title="${NL.esc(aerr)}"` : ''}><span class="u">g</span></td>`;
       const del = `<td class="x"><button class="rc-del" data-delrow="${id}:${idx}" title="Remove">×</button></td>`;
@@ -74,7 +74,7 @@
       }
       const ing = NL.ingMap[it.ref.slice(4)];
       return `<tr><td>${NL.esc(ing?.name || it.ref)}<span class="rc-vendor">${NL.esc(ing?.vendor || '')}</span></td>${amt}${pct}${del}</tr>`;
-    }).join('') || `<tr class="rc-empty"><td colspan="5">No ingredients yet — use the buttons below or drag from the library</td></tr>`;
+    }).join('') || `<tr class="rc-empty"><td colspan="6">No ingredients yet — use the buttons below or drag from the library</td></tr>`;
     const kcal = Math.round(c.perG[0] * (isRoot ? c.yielded : 100));
     return `<div class="rcard ${isRoot ? 'final' : ''} ${a.collapsed ? 'rc-collapsed' : ''} ${!isRoot && !parents.length ? 'orphan' : ''}" data-id="${id}" style="${view === 'sheet' ? `--depth:${depthMap[id] || 0};` : `left:${a.x}px;top:${a.y}px;`}--c:${colorOf(id)}">
       ${isRoot ? '' : `<span class="port" data-port="${id}" title="Drag onto the assembly that uses this card"></span>`}
@@ -94,11 +94,12 @@
           <div><b>${NL.fmt(c.yielded)} g</b><span>Yield</span></div>
           <div><b>${NL.fmt(+a.yieldLoss || 0, 1)}% / ${NL.fmt(NL.yieldPct(a.yieldLoss), 1)}%</b><span>Loss / Yield</span></div>
           <div><b>${kcal}</b><span>${isRoot ? 'kcal / portion' : 'kcal / 100 g'}</span></div>
+          <div class="rc-cost" ${cc.missing ? `title="${cc.missing} ingredient(s) have no price yet, so this is a minimum"` : 'title="Cost from ingredient prices per kg"'}><b>${NL.money(isRoot ? cc.batch : cc.perG * 1000)}${cc.missing ? '*' : ''}</b><span>${isRoot ? 'cost / portion' : 'cost / kg'}</span></div>
         </div>
       </div>
       <div class="rc-body">
-        <table class="rc-tbl"><thead><tr><th>Ingredient</th><th class="r">Weight</th><th class="r">Relative %</th><th class="r" title="Baker's percentage: weight relative to the base ingredient (100%)">Baker %</th><th></th></tr></thead><tbody>${rows}</tbody>
-          ${a.items.length ? `<tfoot>${bset.length > 1 || a.baseName ? `<tr class="rc-base"><td><span class="rc-base-nm" data-basename="${id}" title="Click to rename the base">${NL.esc(bname)}${a.baseName ? ' <small>(Base)</small>' : ''}</span></td><td class="r w">${NL.fmt(baseAmt, 2)}<span class="u">g</span></td><td class="r pc">${NL.pct(baseAmt, c.batch)}</td><td class="r bk">100%</td><td class="x"><button class="rc-del rc-base-x" data-delbase="${id}" title="Remove this base (clears its name and B marks)">×</button></td></tr>` : ''}<tr class="rc-tot"><td>Total</td><td class="r w">${NL.fmt(c.batch, 2)}<span class="u">g</span></td><td class="r pc">100%</td><td class="r bk" title="Total formula percentage">${baseAmt > 0 ? NL.fmt(c.batch / baseAmt * 100, 1) + '%' : `<span class="bk-hint">${bset.length ? 'base has no weight' : 'press B to pick a base'}</span>`}</td><td></td></tr></tfoot>` : ''}</table>
+        <table class="rc-tbl"><thead><tr><th>Ingredient</th><th class="r">Weight</th><th class="r">Relative %</th><th class="r" title="Baker's percentage: weight relative to the base ingredient (100%)">Baker %</th><th class="r" title="Cost of this row: price per kg × weight">Cost</th><th></th></tr></thead><tbody>${rows}</tbody>
+          ${a.items.length ? `<tfoot>${bset.length > 1 || a.baseName ? `<tr class="rc-base"><td><span class="rc-base-nm" data-basename="${id}" title="Click to rename the base">${NL.esc(bname)}${a.baseName ? ' <small>(Base)</small>' : ''}</span></td><td class="r w">${NL.fmt(baseAmt, 2)}<span class="u">g</span></td><td class="r pc">${NL.pct(baseAmt, c.batch)}</td><td class="r bk">100%</td><td class="r cost"></td><td class="x"><button class="rc-del rc-base-x" data-delbase="${id}" title="Remove this base (clears its name and B marks)">×</button></td></tr>` : ''}<tr class="rc-tot"><td>Total</td><td class="r w">${NL.fmt(c.batch, 2)}<span class="u">g</span></td><td class="r pc">100%</td><td class="r bk" title="Total formula percentage">${baseAmt > 0 ? NL.fmt(c.batch / baseAmt * 100, 1) + '%' : `<span class="bk-hint">${bset.length ? 'base has no weight' : 'press B to pick a base'}</span>`}</td><td class="r cost" ${cc.missing ? `title="${cc.missing} ingredient(s) have no price yet"` : ''}>${NL.money(cc.batch)}${cc.missing ? '*' : ''}</td><td></td></tr></tfoot>` : ''}</table>
         <div class="rc-sec rc-fw ${fwErr[id] ? 'bad' : ''}">
           <label>${isRoot ? 'Final portion weight' : 'Final weight after cooking'} <input class="num" inputmode="decimal" data-fk="fw-${id}" data-fw="${id}" value="${+c.yielded.toFixed(1)}" placeholder="${+c.batch.toFixed(1)}"> g</label>
           <span class="rc-fw-res">from ${NL.fmt(c.batch)} g · <b>Yield ${NL.fmt(NL.yieldPct(a.yieldLoss), 1)}%</b> · Loss ${NL.fmt(+a.yieldLoss || 0, 1)}% (${NL.fmt(c.lossG)} g)</span>
@@ -133,6 +134,15 @@
   }
 
   // Nutrition for any card: a one-line summary per 100 g, or the full label when opened.
+  // Cost of one row: ingredients use their price per kg (click to change it); sub-assemblies use their card's cost per gram.
+  function costCell(it) {
+    const sid = subIdOf(it.ref), amt = +it.amount || 0;
+    if (sid) { const k = cost[sid]; return `<td class="r cost" title="${k ? NL.money(k.perG * 1000) + ' per kg, from its card' : ''}">${k ? NL.money(amt * k.perG) + (k.missing ? '*' : '') : '—'}</td>`; }
+    const iid = it.ref.slice(4), p = NL.price(iid), name = NL.esc(NL.ingMap[iid]?.name || iid);
+    const tip = p == null ? `No price yet for ${name}. Click to add a price per kg` : `${NL.money(p)} per kg${NL.isSamplePrice(iid) ? ' (sample price)' : ''}. Click to change`;
+    return `<td class="r cost"><button class="cost-b ${p == null ? 'none' : NL.isSamplePrice(iid) ? 'sample' : ''}" data-price="${iid}" title="${tip}">${p == null ? 'add $' : NL.money(amt / 1000 * p)}</button></td>`;
+  }
+
   function nutSection(id, a, c, isRoot) {
     if (!(c.yielded > 0)) return `<div class="rc-sec rc-nut"><div class="rc-h">Nutrition Facts</div><div class="faint">Add ingredients with weights to see nutrition.</div></div>`;
     const p = i => c.perG[i] * 100;
@@ -562,6 +572,7 @@
       kcal100: rc.perG[0] * 100, cards: Object.keys(state.asm).length,
       nut: NL.NUTRIENTS.map((_, i) => rc.perG[i] * rc.yielded),
       ing: Object.fromEntries(NL.flatten(state, c, state.root)),
+      cost: NL.cost(state, c)[state.root],
     };
   }
   function openCompare() {
@@ -606,6 +617,7 @@
         <tbody>${sec('Summary')}
           ${row('Portion / batch weight', s => s.batch, ' g')}${row('Final weight (yield)', s => s.yielded, ' g')}${row('Cooking loss', s => s.loss, '%')}
           ${row('Calories per portion', s => s.nut[0], ' kcal', 0)}${row('Calories per 100 g', s => s.kcal100, ' kcal', 0)}${row('Cards in assembly', s => s.cards, '', 0)}
+          ${row('Cost per portion ($)', s => s.cost.batch, '', 2)}${row('Cost per kg ($)', s => s.cost.perG * 1000, '', 2)}
           ${sec('Nutrition per portion')}
           ${NL.NUTRIENTS.slice(1).map((n, k) => row(n.label, s => s.nut[k + 1], ' ' + n.unit, n.unit === 'mg' ? 0 : 1)).join('')}
           ${sec('Raw ingredients per portion')}
@@ -792,6 +804,16 @@
     if ((b = q('[data-delcard]'))) return deleteCard(b.dataset.delcard);
     if ((b = q('[data-nuttog]'))) { const a = A(b.dataset.nuttog); a.showNut = !a.showNut; render(); wb.save(S); hist.sync(); return; }
     if ((b = q('[data-nutbasis]'))) { const [id, v] = b.dataset.nutbasis.split(':'); if (A(id).nutBasis === v) return; A(id).nutBasis = v; NL.keepFocus(render); wb.save(S); hist.sync(); return; }
+    if ((b = q('[data-price]'))) {
+      const iid = b.dataset.price, name = NL.ingMap[iid]?.name || iid, cur = NL.price(iid);
+      NL.prompt(`Price per kg for ${name} ($). Used everywhere this ingredient appears.`, cur == null ? '' : String(cur)).then(v => {
+        if (v == null) return;
+        const p = NL.parseNum(v);
+        if (!isFinite(p) || p < 0) return NL.toast('Enter a price like 4.50');
+        NL.setPrice(iid, p); render(); NL.toast(`${name}: ${NL.money(p)} per kg`);
+      });
+      return;
+    }
     if ((b = q('[data-copycard]'))) return copyCard(b.dataset.copycard);
     if ((b = q('[data-fav]'))) { const id = b.dataset.fav; return favOf(id) ? favMenu(id, b) : saveFav(id); }
     if ((b = q('[data-favadd]'))) return useFav(b.dataset.favadd, null);
