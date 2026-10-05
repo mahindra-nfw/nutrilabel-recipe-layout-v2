@@ -193,7 +193,16 @@
   function drawNut() {
     const nut = $('#nut');
     if (!$('#cmain').classList.contains('show-nut')) { nut.innerHTML = ''; return; }
-    nut.innerHTML = hasFinal() ? `<h3>${NL.esc(A(S.root).name)}</h3>${NL.labelHTML(S, calc, S.root)}` : '<div class="nut-empty">Mark a card as <b>Final</b> to see its nutrition label.</div>';
+    // every card's label, in assembly order; each uses the serving basis chosen on its card
+    const ids = sheetOrder();
+    nut.innerHTML = ids.length ? ids.map(id => {
+      const a = A(id), c = calc[id], isRoot = id === S.root, basis = a.nutBasis || (isRoot ? 'all' : '100');
+      const per = basis === '100' ? `per ${NL.fmt(a.nutServing ?? 100, 1)} g` : isRoot ? 'per portion' : 'whole batch';
+      return `<div class="nut-card">
+        <div class="nut-h" data-goto="${id}" title="Go to this card"><span class="sw" style="background:${colorOf(id)}"></span><b>${NL.esc(a.name)}</b><span class="faint">${isRoot ? 'Final' : 'Sub-assembly'} · ${per}</span></div>
+        ${c.yielded > 0 ? NL.labelHTML(S, calc, id, basis === '100' ? (a.nutServing ?? 100) : undefined) : '<div class="nut-empty">No ingredients with weights yet.</div>'}
+      </div>`;
+    }).join('') : '<div class="nut-empty">Add a card to see nutrition.</div>';
   }
   function drawLib() {
     const q = $('#libSearch').value.trim().toLowerCase();
@@ -831,7 +840,7 @@
   $('#zout').onclick = () => vp.zoom(1 / 1.2);
   $('#toggleNut').onclick = () => {
     const m = $('#cmain'); m.classList.toggle('show-nut');
-    $('#toggleNut').textContent = m.classList.contains('show-nut') ? 'Nutrition ◂' : 'Nutrition ▸';
+    $('#toggleNut').textContent = m.classList.contains('show-nut') ? 'All facts ◂' : 'All facts ▸';
     drawNut(); setTimeout(drawLinks, 220);
   };
   $('#newVer').onclick = async () => {
@@ -867,6 +876,30 @@
     setTimeout(drawLinks, 220);
   }
   $('#sideTog').onclick = () => setSide(!$('#cmain').classList.contains('hide-side'));
+  // drag handles to resize the left panel and the All facts panel (remembered per browser; double-click resets)
+  (function panelResize() {
+    const KEY = 'nlv2_panel_widths', m = $('#cmain');
+    let w = {}; try { w = JSON.parse(localStorage.getItem(KEY)) || {}; } catch { }
+    const save = () => { try { localStorage.setItem(KEY, JSON.stringify(w)); } catch { } };
+    const apply = () => { for (const k of ['side', 'nut']) w[k] ? m.style.setProperty(`--${k}-w`, w[k] + 'px') : m.style.removeProperty(`--${k}-w`); };
+    apply();
+    for (const [which, min, max] of [['side', 180, 520], ['nut', 260, 680]]) {
+      const h = document.createElement('div');
+      h.className = `rsz rsz-${which}`; h.title = 'Drag to resize · double-click to reset';
+      m.appendChild(h);
+      h.addEventListener('pointerdown', e => {
+        if (e.button !== 0) return;
+        e.preventDefault(); m.classList.add('resizing'); h.classList.add('active');
+        const r = m.getBoundingClientRect();
+        const other = which === 'side' ? (m.classList.contains('show-nut') ? $('#nut').offsetWidth : 0) : (m.classList.contains('hide-side') ? 0 : $('.side').offsetWidth);
+        const room = Math.max(min, r.width - other - 320); // always leave at least 320px for the canvas
+        const mv = ev => { const px = which === 'side' ? ev.clientX - r.left : r.right - ev.clientX; w[which] = Math.round(Math.min(max, room, Math.max(min, px))); apply(); };
+        const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); m.classList.remove('resizing'); h.classList.remove('active'); save(); drawLinks(); };
+        addEventListener('pointermove', mv); addEventListener('pointerup', up);
+      });
+      h.addEventListener('dblclick', () => { delete w[which]; apply(); save(); setTimeout(drawLinks, 220); });
+    }
+  })();
   try { if (localStorage.getItem(SIDE)) setSide(true); } catch { }
   // TEMP: reset-to-sample button (remove with #resetSample in index.html)
   $('#resetSample').onclick = () => {

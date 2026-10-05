@@ -261,3 +261,31 @@ body:not(.view-sheet) .sheetview { display: none; }
 .nut-seg label { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; font-size: 11px; font-weight: 600; color: var(--muted); cursor: pointer; background: var(--panel); border-left: 1px solid var(--line); }
 .nut-seg label.on { background: var(--accent-soft); color: var(--accent); }
 .nut-g { width: 48px; padding: 1px 4px; border: 1px solid var(--line); border-radius: 5px; font: inherit; text-align: right; background: var(--input); color: var(--text); }
+/* all nutrition labels in the All facts panel */
+.nut-card { padding-bottom: 18px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
+.nut-card:last-child { border-bottom: 0; }
+.nut-h { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 8px; cursor: pointer; }
+.nut-h b { font-size: 14px; } .nut-h:hover b { color: var(--accent); }
+.nut-h .sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.nut-h .faint { font-size: 11px; width: 100%; padding-left: 17px; }
+
+/* resizable panels */
+.cmain { --side-w: 260px; --nut-w: 320px; grid-template-columns: var(--side-w) 1fr 0; }
+.cmain.show-nut { grid-template-columns: var(--side-w) 1fr var(--nut-w); }
+.cmain.hide-side { grid-template-columns: 0 1fr 0; }
+.cmain.hide-side.show-nut { grid-template-columns: 0 1fr var(--nut-w); }
+.cmain.resizing { transition: none; user-select: none; cursor: col-resize; }
+.side-tog { left: calc(var(--side-w) - 16px); }
+.rsz { position: absolute; top: 0; bottom: 0; width: 8px; z-index: 15; cursor: col-resize; touch-action: none; }
+.rsz::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; transition: background .15s; }
+.rsz:hover::after, .rsz.active::after { background: var(--accent); }
+.rsz-side { left: calc(var(--side-w) - 4px); }
+.rsz-nut { right: calc(var(--nut-w) - 4px); display: none; }
+.cmain.show-nut .rsz-nut { display: block; }
+.cmain.hide-side .rsz-side { display: none; }
+/* All facts panel: labels follow the panel width */
+#nut { container-type: inline-size; }
+#nut .nlabel, #nut .lb-stmt { max-width: none; width: 100%; }
+#nut .lb-title { font-size: clamp(26px, 9cqi, 40px); }
+#nut .lb-cal b { font-size: clamp(28px, 9.5cqi, 42px); }
+#nut .lb-cal span { font-size: clamp(18px, 5.5cqi, 24px); }
