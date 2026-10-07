@@ -9,8 +9,8 @@
     try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('nlv2_')) { const n = 'nlv3_' + k.slice(5); if (localStorage.getItem(n) === null) localStorage.setItem(n, localStorage.getItem(k)); } } } catch (e) { }
   </script>
   <script>try { document.documentElement.dataset.theme = localStorage.getItem('nlv3_theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch (e) { }</script>
-  <link rel="stylesheet" href="shared/base.css?v=202610051121">
-  <link rel="stylesheet" href="cards.css?v=202610051121">
+  <link rel="stylesheet" href="shared/base.css?v=202610071200">
+  <link rel="stylesheet" href="cards.css?v=202610071200">
 </head>
 <body data-layout="cards">
   <header class="topbar">
@@ -50,6 +50,7 @@
         <div id="lib" class="lib"></div>
       </div>
     </aside>
+    <div class="ws">
     <section class="canvas" id="vp">
       <div class="empty-hint" id="emptyHint" hidden>
         <b>Blank assembly</b>
@@ -74,10 +75,22 @@
       </div>
       <div class="sv-inner" id="svInner"><svg class="links" id="svLinks"></svg><div id="svCards"></div></div>
     </section>
+    </div>
+    <section class="split" id="split" data-focus-root>
+      <div class="sp-bar">
+        <b class="sp-h">Split view</b>
+        <label class="sp-f">Compare with <select id="spTab"></select></label>
+        <label class="sp-f">Card <select id="spCard"></select></label>
+        <select id="spLeft" title="Scroll the left side to one of its cards"></select>
+        <span class="sp-ro"></span>
+        <button class="sp-x" id="spClose" title="Close split view">×</button>
+      </div>
+      <div class="sp-body" id="spBody"><div class="sv-inner" id="spInner"><svg class="links" id="spLinks"></svg><div id="spCards"></div></div></div>
+    </section>
     <aside class="nut" id="nut"></aside>
   </main>
-  <script src="shared/data.js?v=202610051121"></script>
-  <script src="shared/engine.js?v=202610051121"></script>
-  <script src="cards.js?v=202610051121"></script>
+  <script src="shared/data.js?v=202610071200"></script>
+  <script src="shared/engine.js?v=202610071200"></script>
+  <script src="cards.js?v=202610071200"></script>
 </body>
 </html>

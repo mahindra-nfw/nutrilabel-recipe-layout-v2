@@ -407,7 +407,7 @@ NL.workbook = function (o) {
     document.querySelector('.tb-menu')?.remove();
     const m = document.createElement('div');
     m.className = 'tb-menu';
-    m.innerHTML = `<button data-m="rename">Rename</button><button data-m="dup">Duplicate</button><button data-m="del" class="danger">Delete</button>`;
+    m.innerHTML = `<button data-m="rename">Rename</button><button data-m="dup">Duplicate</button>${o.onSplit ? '<button data-m="split">Split view</button>' : ''}<button data-m="del" class="danger">Delete</button>`;
     document.body.appendChild(m);
     m.style.left = Math.min(x, innerWidth - 170) + 'px'; m.style.top = (y - m.offsetHeight - 6) + 'px';
     const off = e => { if (!m.contains(e.target)) { m.remove(); document.removeEventListener('pointerdown', off, true); } };
@@ -415,7 +415,7 @@ NL.workbook = function (o) {
     m.onclick = e => {
       const a = e.target.dataset.m; if (!a) return;
       m.remove(); document.removeEventListener('pointerdown', off, true);
-      if (a === 'rename') rename(id); else if (a === 'dup') duplicate(id); else close(id);
+      if (a === 'rename') rename(id); else if (a === 'dup') duplicate(id); else if (a === 'split') o.onSplit(id); else close(id);
     };
   }
 
@@ -446,6 +446,7 @@ NL.workbook = function (o) {
     count: () => book.tabs.length,
     names: () => book.tabs.map(name),
     all: () => book.tabs.map(t => ({ id: t.id, name: name(t), state: t.state, active: t.id === book.active })),
+    saveTab(id, state) { const t = tab(id); if (!t) return; t.state = state; persist(); draw(); },
   };
 };
 NL.load = function (key) { try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : null; } catch { return null; } };
@@ -456,12 +457,12 @@ NL.lossFromYield = v => +(100 - Math.min(Math.max(+v || 0, 0), 100)).toFixed(2);
 
 // Re-render while keeping the focused input focused (elements carry data-fk keys).
 NL.keepFocus = function (fn) {
-  const a = document.activeElement, fk = a?.dataset?.fk, typed = a?.value;
+  const a = document.activeElement, fk = a?.dataset?.fk, typed = a?.value, root = a?.closest?.('[data-focus-root]') || document; // two editable panes can share field keys
   let s = null, e = null; try { s = a.selectionStart; e = a.selectionEnd; } catch { }
   NL.refocusing = true; // focus events fired while re-rendering are not the user leaving/entering a field
   try { fn(); } finally { if (!fk) NL.refocusing = false; }
   if (!fk) return;
-  const n = document.querySelector(`[data-fk="${CSS.escape(fk)}"]`);
+  const n = root.querySelector(`[data-fk="${CSS.escape(fk)}"]`);
   if (n) { if (typed != null && 'value' in n) n.value = typed; n.focus(); try { if (s != null) n.setSelectionRange(s, e); } catch { } }
   NL.refocusing = false;
 };
