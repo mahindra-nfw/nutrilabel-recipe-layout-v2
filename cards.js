@@ -35,6 +35,8 @@
     for (const it of A(id).items) { const s = subIdOf(it.ref); if (s && A(s) && !acc.has(s)) { acc.add(s); descendants(s, acc); } }
     return acc;
   }
+  // a card shows its Scaling side only when it is set to and has weights (same rule as cardHTML)
+  const onScaleSide = id => A(id)?.face === 'scale' && calc?.[id]?.batch > 0;
   const wouldCycle = (parent, child) => parent === child || descendants(child).has(parent);
 
   // ---------- rendering ----------
@@ -619,7 +621,7 @@
   const commit = () => hist.commit();
   function addItem(id, value, { focus = true } = {}) {
     const a = A(id);
-    if (a.face === 'scale') return NL.toast(`"${a.name}" is showing its Scaling side. Press Building to add to it`);
+    if (onScaleSide(id)) return NL.toast(`"${a.name}" is showing its Scaling side. Press Building to add to it`);
     if (value === 'new-sub') return newSub(id);
     if (value.startsWith('fav:')) return useFav(value.slice(4), id);
     if (value.startsWith('asm:') && wouldCycle(id, value.slice(4))) return NL.toast('That would create a loop');
@@ -687,7 +689,7 @@
     NL.toast(view === 'sheet' ? 'Card added at the bottom. Link it with ↳ Link to assembly' : 'Card added. Drag its ● onto the assembly that uses it, or add it later with + Ingredient');
   }
   function linkCard(child, parent) {
-    if (A(parent).face === 'scale') return NL.toast(`"${A(parent).name}" is showing its Scaling side. Press Building to link to it`);
+    if (onScaleSide(parent)) return NL.toast(`"${A(parent).name}" is showing its Scaling side. Press Building to link to it`);
     if (A(parent).items.some(it => it.ref === 'asm:' + child)) return NL.toast('Already linked');
     if (wouldCycle(parent, child)) return NL.toast('That would create a loop');
     addItem(parent, 'asm:' + child);
@@ -760,7 +762,7 @@
   }
   function removeFav(fid) { const f = favById(fid); writeFavs(readFavs().filter(x => x.id !== fid)); render(); if (f) NL.toast(`Removed "${f.name}" from favorites`); }
   function useFav(fid, parent) {
-    if (parent && A(parent)?.face === 'scale') return NL.toast(`"${A(parent).name}" is showing its Scaling side. Press Building to add to it`);
+    if (parent && onScaleSide(parent)) return NL.toast(`"${A(parent).name}" is showing its Scaling side. Press Building to add to it`);
     const f = favById(fid); if (!f) return NL.toast('That favorite no longer exists');
     insertCards(f, { parent });
     NL.toast(parent ? `Added "${f.name}" to "${A(parent).name}". Set its weight` : `Added "${f.name}" as a new card`);
