@@ -4,7 +4,7 @@ R&D recipe / assembly builder for chefs at Northwest Frozen. Owner: Mahindra (Ad
 
 - Repo: `mahindra-nfw/nutrilabel-recipe-layout-v3` (PUBLIC; served by GitHub Pages from `main`)
 - Live: https://mahindra-nfw.github.io/nutrilabel-recipe-layout-v3/
-- Commits are authored as GitHub user `mahindra89` (collaborator on the repo).
+- Commits are authored as GitHub user `mahindra-nfw` (repo owner), with the noreply email `330545866+mahindra-nfw@users.noreply.github.com`. Older commits are by `mahindra89`.
 
 ## Working rules (from the user)
 - **Only commit/push when the user says so** ("push it", "push the changes"). Otherwise leave changes local and say they are not pushed.
