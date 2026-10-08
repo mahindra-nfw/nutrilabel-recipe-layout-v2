@@ -9,8 +9,8 @@
     try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('nlv2_')) { const n = 'nlv3_' + k.slice(5); if (localStorage.getItem(n) === null) localStorage.setItem(n, localStorage.getItem(k)); } } } catch (e) { }
   </script>
   <script>try { document.documentElement.dataset.theme = localStorage.getItem('nlv3_theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch (e) { }</script>
-  <link rel="stylesheet" href="shared/base.css?v=202610081000">
-  <link rel="stylesheet" href="cards.css?v=202610081000">
+  <link rel="stylesheet" href="shared/base.css?v=202610081213">
+  <link rel="stylesheet" href="cards.css?v=202610081213">
 </head>
 <body data-layout="cards">
   <header class="topbar">
@@ -90,8 +90,8 @@
     </section>
     <aside class="nut" id="nut"></aside>
   </main>
-  <script src="shared/data.js?v=202610081000"></script>
-  <script src="shared/engine.js?v=202610081000"></script>
-  <script src="cards.js?v=202610081000"></script>
+  <script src="shared/data.js?v=202610081213"></script>
+  <script src="shared/engine.js?v=202610081213"></script>
+  <script src="cards.js?v=202610081213"></script>
 </body>
 </html>

@@ -55,6 +55,13 @@
   const renderKeep = () => NL.keepFocus(render);
   // flip side: Ingredient, Weight and Cost stay put while the scaled columns scroll sideways
   function stickCols(root) {
+    // Scaling side: widen the card so every pinned column fits without scrolling sideways
+    for (const b of root.querySelectorAll('.rcard.face-scale .rc-body')) {
+      const t = b.querySelector('.rc-tbl'), card = b.closest('.rcard'); if (!t || !b.clientWidth) continue;
+      const zoom = b.getBoundingClientRect().width / b.offsetWidth || 1; // the board may be zoomed
+      const over = Math.max(b.scrollWidth, t.getBoundingClientRect().width / zoom) - b.clientWidth;
+      if (over > 0) card.style.width = Math.ceil(card.offsetWidth + over) + 1 + 'px';
+    }
     for (const t of root.querySelectorAll('.rcard.flipface .rc-tbl')) {
       const h = t.tHead?.rows[0]; if (!h || !h.cells[0].offsetWidth) continue;
       const w1 = h.cells[0].offsetWidth, w2 = h.querySelector('.hc-w').offsetWidth;
@@ -105,8 +112,13 @@
     const lb = a.labor || [], lbTotal = laborOf(a), lbMissing = lb.filter(r => laborCost(r) == null).length;
     const allMissing = cc.missing + pkMissing + lbMissing, allStar = allMissing ? '*' : '', costAll = cc.batch + pkTotal + lbTotal;
     const costTip = pk.length || lb.length ? `Ingredients ${NL.money(cc.batch)}${pk.length ? ` + packaging ${NL.money(pkTotal)}` : ''}${lb.length ? ` + labor ${NL.money(lbTotal)}` : ''}${allMissing ? `. ${allMissing} item(s) have no price yet` : ''}` : (cc.missing ? `${cc.missing} ingredient(s) have no price yet` : '');
+    // each scaled column shows weights (g) or costs ($); the live column keeps its choice on the card, pinned ones on the pin
+    const showCost = k => !!(k < 0 ? a.scaleShowCost : pins[k]?.showCost);
+    const scCols = [...(showSc ? [{ f: sc.f, k: -1, cls: '' }] : []), ...vp.map(({ p, k }) => ({ f: pinF(p), k, cls: pcls(k) }))];
+    const scCells = (wt, usd) => scCols.map(({ f, k, cls }) => `<td class="r scl${cls}">${showCost(k) ? (usd == null ? '<span class="faint">—</span>' : NL.money(usd.v * f) + (usd.miss ? '*' : '')) : wt(f)}</td>`).join('');
+    const scTog = k => `<span class="scl-tog" title="Show weights or costs in this column"><button class="${showCost(k) ? '' : 'on'}" data-sclshow="${id}:${k}:g">g</button><button class="${showCost(k) ? 'on' : ''}" data-sclshow="${id}:${k}:$">$</button></span>`;
     const pkW1 = (r, f) => r.weight != null ? `${NL.fmt(r.weight * f, 2)}<span class="u">g</span>` : '';
-    const pkScaled = r => (showSc ? `<td class="r scl">${pkW1(r, sc.f)}</td>` : '') + vp.map(({ p, k }) => `<td class="r scl${pcls(k)}">${pkW1(r, pinF(p))}</td>`).join('');
+    const pkScaled = r => scCells(f => pkW1(r, f), r.cost != null ? { v: +r.cost } : null);
     const gross = (food, f = 1) => pkW > 0 ? `<div class="pk-gross" title="Food ${NL.fmt(food * f, 2)} g + packaging ${NL.fmt(pkW * f, 2)} g">gross ${NL.fmt((food + pkW) * f, 2)} g</div>` : '';
     const pkRows = pk.length ? `<tr class="pk-head"><td colspan="${ncol}">Packaging</td></tr>` + pk.map((r, k) => `<tr class="pk-row">
         <td><span class="pk-cell"><button class="rc-del rc-del-l" data-pkdel="${id}:${k}" title="Remove this packaging">×</button><input ${RO}class="pk-name" data-pkn="${id}:${k}" data-fk="pkn-${id}-${k}" value="${NL.esc(r.name || '')}" placeholder="e.g. Pouch"><button class="pk-more" data-pkedit="${id}:${k}" title="Edit name, cost and dimensions${r.l || r.w || r.h ? ` (${[r.l, r.w, r.h].map(v => v ?? '–').join(' × ')} ${r.unit || 'mm'})` : ''}">⋯</button></span></td>
@@ -114,7 +126,7 @@
         <td class="r cost pk-cost">$<input ${RO}class="num" inputmode="decimal" data-pkc="${id}:${k}" data-fk="pkc-${id}-${k}" value="${r.cost ?? ''}" placeholder="0.00"></td>
         ${pkScaled(r)}<td class="x"></td></tr>`).join('') : '';
     const lbMin = (r, f) => r.minutes != null ? `${NL.fmt(r.minutes * f, 0)}<span class="u">min</span>` : '';
-    const lbScaled = r => (showSc ? `<td class="r scl">${lbMin(r, sc.f)}</td>` : '') + vp.map(({ p, k }) => `<td class="r scl${pcls(k)}">${lbMin(r, pinF(p))}</td>`).join('');
+    const lbScaled = r => scCells(f => lbMin(r, f), laborCost(r) == null ? null : { v: laborCost(r) });
     const lbRows = lb.length ? `<tr class="pk-head lab-head"><td colspan="${ncol}">Labor <small>approximate</small></td></tr>` + lb.map((r, k) => `<tr class="pk-row lab-row">
         <td><span class="pk-cell"><button class="rc-del rc-del-l" data-lbdel="${id}:${k}" title="Remove this task">×</button><input ${RO}class="pk-name" data-lbf="${id}:${k}:name" data-fk="lbn-${id}-${k}" value="${NL.esc(r.name || '')}" placeholder="e.g. Prep"><button class="pk-more" data-lbedit="${id}:${k}" title="Edit this task">⋯</button></span></td>
         <td class="r w"><input ${RO}class="num" inputmode="decimal" data-lbf="${id}:${k}:minutes" data-fk="lbm-${id}-${k}" value="${r.minutes ?? ''}" placeholder="—" title="Minutes"><span class="u">min</span></td>
@@ -123,7 +135,7 @@
         <td class="r cost" title="${r.minutes ?? '?'} min × ${r.people ?? 1} × ${r.rate != null ? NL.money(r.rate) : '?'}/h">${laborCost(r) == null ? '—' : NL.money(laborCost(r))}</td>
         ${lbScaled(r)}<td class="x"></td></tr>`).join('') : '';
     const costRow = () => `<tr class="rc-costrow" ${cc.missing ? `title="${cc.missing} ingredient(s) have no price yet, so these are minimums"` : ''}><td>Cost</td><td class="r w" ${costTip ? `title="${costTip}"` : ''}>${NL.money(costAll)}${allStar}</td><td class="pc"></td><td class="bk"></td><td class="cost"></td>${showSc ? costCellFor(sc.f) : ''}${vp.map(({ p, k }) => costCellFor(pinF(p), p, k)).join('')}<td></td></tr>`;
-    const scCell = g => (showSc ? `<td class="r scl">${NL.fmt(g * sc.f, 2)}<span class="u">g</span></td>` : '') + vp.map(({ p, k }) => `<td class="r scl${pcls(k)}">${NL.fmt(g * pinF(p), 2)}<span class="u">g</span></td>`).join('');
+    const scCell = (g, usd) => scCells(f => `${NL.fmt(g * f, 2)}<span class="u">g</span>`, usd);
     const rows = a.items.map((it, idx) => {
       const sid = subIdOf(it.ref);
       const inBase = bset.includes(idx), bpct = baseAmt > 0 ? +((+it.amount || 0) / baseAmt * 100).toFixed(2) : null;
@@ -131,7 +143,7 @@
       const bk = inBase
         ? `<td class="r bk base"><span class="bk-base" title="Share of the base (${NL.esc(bname)})">${bpct == null ? '—' : NL.fmt(bpct, 2) + '%'}</span>${bbtn}</td>`
         : `<td class="r bk"><span class="bk-in"><input ${RO}class="num" inputmode="decimal" data-fk="bk-${id}-${idx}" data-bk="${id}:${idx}" value="${bpct ?? ''}" ${baseAmt > 0 ? 'title="Baker %: type a % to set this weight from the base"' : `disabled placeholder="—" title="${bset.length ? 'The base has no weight yet' : 'Press B on an ingredient to choose the base'}"`}>%</span>${bbtn}</td>`;
-      const pct = `<td class="r pc">${NL.pct(+it.amount || 0, c.batch)}</td>${bk}${costCell(it)}${scCell(+it.amount || 0)}`;
+      const pct = `<td class="r pc">${NL.pct(+it.amount || 0, c.batch)}</td>${bk}${costCell(it)}${scCell(+it.amount || 0, rowCost(it))}`;
       const aerr = amtErr[`${id}:${idx}`];
       const amt = `<td class="r w"><input ${RO}class="num ${aerr ? 'bad' : ''}" inputmode="decimal" data-fk="amt-${id}-${idx}" data-amt="${id}:${idx}" value="${it.amount}" ${aerr ? `title="${NL.esc(aerr)}"` : ''}><span class="u">g</span></td>`;
       const delL = `<button class="rc-del rc-del-l" data-delrow="${id}:${idx}" title="Remove this row">×</button>`, del = '<td class="x"></td>';
@@ -166,8 +178,8 @@
         </div>
       </div>
       <div class="rc-body">
-        <table class="rc-tbl"><thead><tr><th>Ingredient</th><th class="r hc-w">Weight</th><th class="r hc-pc">Relative %</th><th class="r hc-bk" title="Baker's percentage: weight relative to the base ingredient (100%)">Baker %</th><th class="r hc-cost" title="Cost of this row: price per kg × weight">Cost</th>${showSc ? `<th class="r scl" title="Weights for the target below; your Weight column is not changed">Scaled by ${sc.mode}<button class="scl-pin" data-sclpin="${id}" title="Pin this scaling as its own column, to compare with others">📌</button></th>` : ''}${vp.map(({ p, k }) => `<th class="r scl${pcls(k)}" title="Pinned: ${p.mode === 'portion' ? 'scale by portion' : 'scale by yield'}">${p.mode === 'portion' ? `${NL.fmt(p.size, 1)} g × ${NL.fmt(p.count, 2)}` : p.mode === 'base' ? `Base ${NL.fmt(p.target, 1)} g` : `Yield ${NL.fmt(p.target, 1)} g`}<button class="scl-unpin" data-sclunpin="${id}:${k}" title="Remove this column">×</button>${isRoot ? '' : `<div><button class="scl-use ${k === activeK ? 'on' : ''}" data-scluse="${id}:${k}" title="${k === activeK ? 'Active scaling. Click to clear' : `Make this the active scaling (portion size ${NL.fmt(pinF(p) * c.yielded, 2)} g). Your weights are not changed`}">${k === activeK ? '✓ In use' : 'Use'}</button></div>`}</th>`).join('')}<th></th></tr></thead><tbody>${rows}${pkRows}${lbRows}</tbody>
-          ${a.items.length ? `<tfoot>${bset.length > 1 || a.baseName ? `<tr class="rc-base"><td><span class="rc-base-nm" data-basename="${id}" title="Click to rename the base">${NL.esc(bname)}${a.baseName ? ' <small>(Base)</small>' : ''}</span></td><td class="r w">${NL.fmt(baseAmt, 2)}<span class="u">g</span></td><td class="r pc">${NL.pct(baseAmt, c.batch)}</td><td class="r bk">100%</td><td class="r cost"></td>${scCell(baseAmt)}<td class="x"><button class="rc-del rc-base-x" data-delbase="${id}" title="Remove this base (clears its name and B marks)">×</button></td></tr>` : ''}<tr class="rc-tot"><td>Total</td><td class="r w">${NL.fmt(c.batch, 2)}<span class="u">g</span>${gross(c.batch)}</td><td class="r pc">100%</td><td class="r bk" title="Total formula percentage">${baseAmt > 0 ? NL.fmt(c.batch / baseAmt * 100, 1) + '%' : `<span class="bk-hint">${bset.length ? 'base has no weight' : 'press B to pick a base'}</span>`}</td><td class="r cost" ${costTip ? `title="${costTip}"` : ''}>${NL.money(costAll)}${allStar}</td>${showSc ? `<td class="r scl">${NL.fmt(c.batch * sc.f, 2)}<span class="u">g</span>${gross(c.batch, sc.f)}</td>` : ''}${vp.map(({ p, k }) => `<td class="r scl${pcls(k)}">${NL.fmt(c.batch * pinF(p), 2)}<span class="u">g</span>${gross(c.batch, pinF(p))}</td>`).join('')}<td></td></tr>${showSc || vp.length ? costRow() : ''}</tfoot>` : ''}</table>
+        <table class="rc-tbl"><thead><tr><th>Ingredient</th><th class="r hc-w">Weight</th><th class="r hc-pc">Relative %</th><th class="r hc-bk" title="Baker's percentage: weight relative to the base ingredient (100%)">Baker %</th><th class="r hc-cost" title="Cost of this row: price per kg × weight">Cost</th>${showSc ? `<th class="r scl" title="Weights for the target below; your Weight column is not changed">Scaled<div class="scl-ctl">${scTog(-1)}</div></th>` : ''}${vp.map(({ p, k }) => `<th class="r scl${pcls(k)}" title="Pinned: ${p.mode === 'portion' ? 'scale by portion' : 'scale by yield'}">${p.mode === 'portion' ? `${NL.fmt(p.size, 1)} g × ${NL.fmt(p.count, 2)}` : p.mode === 'base' ? `Base ${NL.fmt(p.target, 1)} g` : `Yield ${NL.fmt(p.target, 1)} g`}<button class="scl-unpin" data-sclunpin="${id}:${k}" title="Remove this column">×</button><div class="scl-ctl">${scTog(k)}</div></th>`).join('')}<th></th></tr></thead><tbody>${rows}${pkRows}${lbRows}</tbody>
+          ${a.items.length ? `<tfoot>${bset.length > 1 || a.baseName ? `<tr class="rc-base"><td><span class="rc-base-nm" data-basename="${id}" title="Click to rename the base">${NL.esc(bname)}${a.baseName ? ' <small>(Base)</small>' : ''}</span></td><td class="r w">${NL.fmt(baseAmt, 2)}<span class="u">g</span></td><td class="r pc">${NL.pct(baseAmt, c.batch)}</td><td class="r bk">100%</td><td class="r cost"></td>${scCell(baseAmt)}<td class="x"><button class="rc-del rc-base-x" data-delbase="${id}" title="Remove this base (clears its name and B marks)">×</button></td></tr>` : ''}<tr class="rc-tot"><td>Total</td><td class="r w">${NL.fmt(c.batch, 2)}<span class="u">g</span>${gross(c.batch)}</td><td class="r pc">100%</td><td class="r bk" title="Total formula percentage">${baseAmt > 0 ? NL.fmt(c.batch / baseAmt * 100, 1) + '%' : `<span class="bk-hint">${bset.length ? 'base has no weight' : 'press B to pick a base'}</span>`}</td><td class="r cost" ${costTip ? `title="${costTip}"` : ''}>${NL.money(costAll)}${allStar}</td>${scCells(f => `${NL.fmt(c.batch * f, 2)}<span class="u">g</span>${gross(c.batch, f)}`, { v: costAll, miss: allMissing > 0 })}<td></td></tr>${showSc || vp.length ? costRow() : ''}</tfoot>` : ''}</table>
         <div class="rc-sec rc-fw bo ${fwErr[id] ? 'bad' : ''}">
           <label>${isRoot ? 'Final portion weight' : 'Final weight after cooking'} <input class="num" inputmode="decimal" data-fk="fw-${id}" data-fw="${id}" value="${+c.yielded.toFixed(1)}" placeholder="${+c.batch.toFixed(1)}"> g</label>
           <span class="rc-fw-res">from ${NL.fmt(c.batch)} g · <b>Yield ${NL.fmt(NL.yieldPct(a.yieldLoss), 1)}%</b> · Loss ${NL.fmt(+a.yieldLoss || 0, 1)}% (${NL.fmt(c.lossG)} g)</span>
@@ -186,7 +198,7 @@
           <li>Add raw ingredients with <b>+ Ingredient</b>, or drag them from the library onto this card.</li>
           <li>Need a component (a sauce, a broth)? Click <b>＋ New sub-assembly</b>. It opens its own linked card where you add its ingredients.</li>
           <li>Type the weight on each row. Batch, yield, % and nutrition update as you type.</li></ol></div>` : ''}
-        ${c.batch > 0 ? `<div class="rc-sec rc-bscale">${scaleControls(id, a, c, sc)}<span class="faint scl-note">${flip ? 'scaling side · read-only · press Building to edit' : 'reads your weights · never changes them'}</span></div>` : ''}
+        ${c.batch > 0 ? `<div class="rc-sec rc-bscale">${scaleControls(id, a, c, sc)}<span class="scl-addrow"><button class="scl-add" data-sclpin="${id}" ${pins.length >= 4 ? 'disabled title="Up to 4 columns. Remove one with × first"' : 'title="Add these numbers as a column, to compare with others"'}>+ Add as column</button><span class="faint">${pins.length} of 4 columns</span><span class="faint scl-note">${flip ? 'scaling side · read-only · press Building to edit' : 'reads your weights · never changes them'}</span></span></div>` : ''}
         <div class="bo">${nutSection(id, a, c, isRoot)}</div>
         <div class="rc-sec bo">
           <div class="rc-h">Procedure <button class="rc-mini" data-addstep="${id}">+ Step</button></div>
@@ -202,6 +214,13 @@
 
   // Nutrition for any card: a one-line summary per 100 g, or the full label when opened.
   // Cost of one row: ingredients use their price per kg (click to change it); sub-assemblies use their card's cost per gram.
+  // cost of one row as a number (null when there is no price), for the scaled columns
+  function rowCost(it) {
+    const sid = subIdOf(it.ref), amt = +it.amount || 0;
+    if (sid) { const k = cost[sid]; return k ? { v: amt * k.perG, miss: !!k.missing } : null; }
+    const p = NL.price(it.ref.slice(4));
+    return p == null ? null : { v: amt / 1000 * p };
+  }
   function costCell(it) {
     const sid = subIdOf(it.ref), amt = +it.amount || 0;
     if (sid) { const k = cost[sid]; return `<td class="r cost" title="${k ? NL.money(k.perG * 1000) + ' per kg, from its card' : ''}">${k ? NL.money(amt * k.perG) + (k.missing ? '*' : '') : '—'}</td>`; }
@@ -403,14 +422,20 @@
     cardsEl.querySelectorAll('.rcard').forEach(el => { h[el.dataset.id] = el.offsetHeight; });
     return h;
   }
+  // real card widths (a card on its Scaling side grows to fit its pinned columns)
+  function widths() {
+    const w = {};
+    cardsEl.querySelectorAll('.rcard').forEach(el => { w[el.dataset.id] = el.offsetWidth || CARDW; });
+    return w;
+  }
   function arrange() {
     if (view === 'sheet') { S._arrange = true; return render(); } // board layout is done when the board is shown
     render();
-    const H = heights(), placed = new Set(), colBottom = [];
+    const H = heights(), W = widths(), placed = new Set(), colBottom = [], depth = {};
     const place = (id, d, desired) => {
       if (placed.has(id)) return; placed.add(id);
       const a = A(id);
-      a.x = d * (CARDW + GAPX) + (id === S.root ? -20 : 0);
+      depth[id] = d;
       a.y = Math.max(desired, (colBottom[d] ?? -Infinity) + GAPY);
       colBottom[d] = a.y + H[id];
       // rows are ~34px; place each child next to the row that references it
@@ -421,14 +446,19 @@
     };
     if (hasFinal()) place(S.root, 0, 0);
     else for (const id of Object.keys(S.asm)) if (!parentsOf(id).length) place(id, 0, 0);
+    // each column is as wide as its widest card
+    const colW = [], colX = [0];
+    for (const [id, d] of Object.entries(depth)) colW[d] = Math.max(colW[d] || CARDW, W[id]);
+    for (let d = 1; d < colW.length; d++) colX[d] = colX[d - 1] + (colW[d - 1] || CARDW) + GAPX;
+    for (const [id, d] of Object.entries(depth)) A(id).x = colX[d] + (id === S.root ? -20 : 0);
     let y = Math.max(0, ...colBottom.filter(v => v != null)) + 80;
-    for (const id of Object.keys(S.asm)) if (!placed.has(id)) { A(id).x = CARDW + GAPX; A(id).y = y; y += H[id] + GAPY; }
+    for (const id of Object.keys(S.asm)) if (!placed.has(id)) { A(id).x = (colW[0] || CARDW) + GAPX; A(id).y = y; y += H[id] + GAPY; }
     render();
   }
   function bounds() {
     if (!Object.keys(S.asm).length) return { x: 0, y: 0, w: 900, h: 600 };
-    const H = heights(); let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const [id, a] of Object.entries(S.asm)) { x0 = Math.min(x0, a.x); y0 = Math.min(y0, a.y); x1 = Math.max(x1, a.x + CARDW + 20); y1 = Math.max(y1, a.y + (H[id] || 300)); }
+    const H = heights(), W = widths(); let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [id, a] of Object.entries(S.asm)) { x0 = Math.min(x0, a.x); y0 = Math.min(y0, a.y); x1 = Math.max(x1, a.x + (W[id] || CARDW) + 20); y1 = Math.max(y1, a.y + (H[id] || 300)); }
     return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
   }
   function goto(id) {
@@ -1118,6 +1148,12 @@
       return;
     }
     if ((b = q('[data-pkdel]'))) { const [id, k] = b.dataset.pkdel.split(':'); A(id).packaging.splice(+k, 1); render(); commit(); return; }
+    if ((b = q('[data-sclshow]'))) {
+      const [id, k, v] = b.dataset.sclshow.split(':'), a = A(id), t = +k < 0 ? a : a.scalePins?.[+k], key = +k < 0 ? 'scaleShowCost' : 'showCost';
+      if (!t) return;
+      if (v === '$') t[key] = true; else delete t[key];
+      render(); saveCur(); hist.sync(); return;
+    }
     if ((b = q('[data-scluse]'))) {
       const [id, k] = b.dataset.scluse.split(':'), a = A(id), p = a.scalePins[+k];
       if (!p) return;

@@ -11,7 +11,7 @@ R&D recipe / assembly builder for chefs at Northwest Frozen. Owner: Mahindra (Ad
 - Before a risky experiment, the user may ask for a **checkpoint**: commit, push, and add an annotated tag (e.g. `checkpoint-before-scaling-view`). To revert, restore files from the tag in a new commit; never rewrite history.
 - **Scaling is read-only.** Scaling, pinned columns and the portion-size dropdown only *read* the recipe weights. They must never change an assembly's original values.
 - Never push the user's recipes/test data into this public repo without asking (client formulas and costs may be confidential).
-- Explain changes in plain language (the user is not a developer). Ask when a request is ambiguous.
+- The user is a software engineer building this for chefs (not a chef). Technical explanations are fine; keep UI wording plain for chefs. For chef-workflow questions, pick a sensible default and list it as an assumption to test with chefs. Ask when a request is ambiguous.
 
 ## Run locally
 `npm start` (or `node server.js`, or double-click `start.bat`) → http://localhost:5181. No dependencies, no build step.
@@ -45,4 +45,4 @@ Use the browser preview at http://localhost:5181. Drive it with small JS checks 
 
 ## History
 - Older UI Lab with Layouts A/B/C: `mahindra-nfw/nutrilabel-recipe-layout` (separate repo; known unfixed bugs there, untouched unless asked).
-- Tags: `checkpoint-before-scaling-view` = everything before the Building/Scaling card sides.
+- Tags: `checkpoint-before-scaling-view` = everything before the Building/Scaling card sides; `checkpoint-before-final-scaling` = everything before Final-assembly scaling (pull from sub-assemblies, production run).
