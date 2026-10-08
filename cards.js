@@ -9,6 +9,9 @@
   let cardsEl = boardCardsEl, view = 'board', orderIdx = {}, depthMap = {}; // view: 'board' (canvas) or 'sheet' (stacked)
 
   let S, calc, hist, cost = {};
+  // Building / Scaling card faces. Style 'flip' turns the card over to a read-only scaling side; 'hide' keeps the card and hides the building columns.
+  let scaleStyle = 'flip'; try { if (localStorage.getItem('nlv3_scale_style') === 'hide') scaleStyle = 'hide'; } catch { }
+  const flipIn = {}; // card id -> 1 while its flip-in animation should play
   const fwErr = {}; // card id -> message while the typed final weight is invalid
   const amtErr = {}; // 'card:row' -> message while a typed ingredient weight is invalid
   const fwStart = {}; // card id -> yieldLoss when editing began, restored if the entry is invalid
@@ -41,6 +44,7 @@
       const ord = sheetOrder(); orderIdx = Object.fromEntries(ord.map((id, k) => [id, k])); depthMap = depths();
       cardsEl.innerHTML = ord.length ? ord.map(cardHTML).join('') : SHEET_EMPTY;
     } else cardsEl.innerHTML = Object.keys(S.asm).map(cardHTML).join('');
+    stickCols(cardsEl);
     drawLinks();
     drawTree();
     drawNut();
@@ -49,6 +53,21 @@
     wb.live(S);
   }
   const renderKeep = () => NL.keepFocus(render);
+  // flip side: Ingredient, Weight and Cost stay put while the scaled columns scroll sideways
+  function stickCols(root) {
+    for (const t of root.querySelectorAll('.rcard.flipface .rc-tbl')) {
+      const h = t.tHead?.rows[0]; if (!h || !h.cells[0].offsetWidth) continue;
+      const w1 = h.cells[0].offsetWidth, w2 = h.querySelector('.hc-w').offsetWidth;
+      t.style.setProperty('--s1', w1 + 'px'); t.style.setProperty('--s2', w1 + w2 + 'px');
+    }
+  }
+  // re-measure when the card area changes width (panel hidden, window resized, split opened)
+  { const ro = new ResizeObserver(() => { for (const el of [boardCardsEl, $('#svCards'), $('#spCards')]) if (el) stickCols(el); }); for (const el of [$('#svCards'), $('#spCards'), $('#cmain')]) if (el) ro.observe(el); }
+  function setFace(id, f) {
+    const s = side, el = cardsEl.querySelector(`.rcard[data-id="${id}"]`), anim = scaleStyle === 'flip' && el && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const go = () => { const a = A(id); if (!a) return; if (f === 'scale') a.face = 'scale'; else delete a.face; if (anim) flipIn[id] = 1; render(); delete flipIn[id]; saveCur(); hist.sync(); };
+    if (anim) { el.classList.add('flip-out'); setTimeout(() => withSide(s, go), 170); } else go();
+  }
 
   function cardHTML(id) {
     const a = A(id), c = calc[id], cc = cost[id] || { batch: 0, perG: 0, missing: 0 }, isRoot = id === S.root;
@@ -74,6 +93,10 @@
     // the pinned column in use: its portion weight is what the parent assembly takes (shown as "portion size" on top)
     const activeK = isRoot ? -1 : pins.findIndex(p => p.id && p.id === a.activePin);
     const pcls = k => ' pinned' + (k === activeK ? ' active' : '');
+    // Building shows the recipe plus only the column in use; Scaling shows the live scaled column and every pinned column
+    const scaling = a.face === 'scale' && c.batch > 0, flip = scaling && scaleStyle === 'flip', showSc = scaling;
+    const vp = scaling ? pins.map((p, k) => ({ p, k })) : activeK >= 0 ? [{ p: pins[activeK], k: activeK }] : [];
+    const ncol = 6 + (showSc ? 1 : 0) + vp.length, RO = flip ? 'readonly tabindex="-1" ' : '';
     // cost of the batch at each scaling (portion scalings also show cost per portion)
     const star = cc.missing ? '*' : '';
     const costCellFor = (f, p, k) => `<td class="r scl${p ? pcls(k) : ''}">${NL.money(costAll * f)}${allStar}${(p || sc).mode === 'portion' ? `<div class="scl-pp">${NL.money(costAll * f / ((p || sc).count || 1))} / portion</div>` : ''}</td>`;
@@ -83,43 +106,44 @@
     const allMissing = cc.missing + pkMissing + lbMissing, allStar = allMissing ? '*' : '', costAll = cc.batch + pkTotal + lbTotal;
     const costTip = pk.length || lb.length ? `Ingredients ${NL.money(cc.batch)}${pk.length ? ` + packaging ${NL.money(pkTotal)}` : ''}${lb.length ? ` + labor ${NL.money(lbTotal)}` : ''}${allMissing ? `. ${allMissing} item(s) have no price yet` : ''}` : (cc.missing ? `${cc.missing} ingredient(s) have no price yet` : '');
     const pkW1 = (r, f) => r.weight != null ? `${NL.fmt(r.weight * f, 2)}<span class="u">g</span>` : '';
-    const pkScaled = r => sc ? `<td class="r scl">${pkW1(r, sc.f)}</td>` + pins.map((p, k) => `<td class="r scl${pcls(k)}">${pkW1(r, pinF(p))}</td>`).join('') : '';
+    const pkScaled = r => (showSc ? `<td class="r scl">${pkW1(r, sc.f)}</td>` : '') + vp.map(({ p, k }) => `<td class="r scl${pcls(k)}">${pkW1(r, pinF(p))}</td>`).join('');
     const gross = (food, f = 1) => pkW > 0 ? `<div class="pk-gross" title="Food ${NL.fmt(food * f, 2)} g + packaging ${NL.fmt(pkW * f, 2)} g">gross ${NL.fmt((food + pkW) * f, 2)} g</div>` : '';
-    const pkRows = pk.length ? `<tr class="pk-head"><td colspan="${5 + (sc ? 1 + pins.length : 0) + 1}">Packaging</td></tr>` + pk.map((r, k) => `<tr class="pk-row">
-        <td><span class="pk-cell"><button class="rc-del rc-del-l" data-pkdel="${id}:${k}" title="Remove this packaging">×</button><input class="pk-name" data-pkn="${id}:${k}" data-fk="pkn-${id}-${k}" value="${NL.esc(r.name || '')}" placeholder="e.g. Pouch"><button class="pk-more" data-pkedit="${id}:${k}" title="Edit name, cost and dimensions${r.l || r.w || r.h ? ` (${[r.l, r.w, r.h].map(v => v ?? '–').join(' × ')} ${r.unit || 'mm'})` : ''}">⋯</button></span></td>
-        <td class="r w"><input class="num" inputmode="decimal" data-pkd="${id}:${k}:weight" data-fk="pkw-${id}-${k}" value="${r.weight ?? ''}" placeholder="—" title="Weight of this packaging per unit (kept out of the food weight)"><span class="u">g</span></td><td></td><td></td>
-        <td class="r cost pk-cost">$<input class="num" inputmode="decimal" data-pkc="${id}:${k}" data-fk="pkc-${id}-${k}" value="${r.cost ?? ''}" placeholder="0.00"></td>
+    const pkRows = pk.length ? `<tr class="pk-head"><td colspan="${ncol}">Packaging</td></tr>` + pk.map((r, k) => `<tr class="pk-row">
+        <td><span class="pk-cell"><button class="rc-del rc-del-l" data-pkdel="${id}:${k}" title="Remove this packaging">×</button><input ${RO}class="pk-name" data-pkn="${id}:${k}" data-fk="pkn-${id}-${k}" value="${NL.esc(r.name || '')}" placeholder="e.g. Pouch"><button class="pk-more" data-pkedit="${id}:${k}" title="Edit name, cost and dimensions${r.l || r.w || r.h ? ` (${[r.l, r.w, r.h].map(v => v ?? '–').join(' × ')} ${r.unit || 'mm'})` : ''}">⋯</button></span></td>
+        <td class="r w"><input ${RO}class="num" inputmode="decimal" data-pkd="${id}:${k}:weight" data-fk="pkw-${id}-${k}" value="${r.weight ?? ''}" placeholder="—" title="Weight of this packaging per unit (kept out of the food weight)"><span class="u">g</span></td><td class="pc"></td><td class="bk"></td>
+        <td class="r cost pk-cost">$<input ${RO}class="num" inputmode="decimal" data-pkc="${id}:${k}" data-fk="pkc-${id}-${k}" value="${r.cost ?? ''}" placeholder="0.00"></td>
         ${pkScaled(r)}<td class="x"></td></tr>`).join('') : '';
     const lbMin = (r, f) => r.minutes != null ? `${NL.fmt(r.minutes * f, 0)}<span class="u">min</span>` : '';
-    const lbScaled = r => sc ? `<td class="r scl">${lbMin(r, sc.f)}</td>` + pins.map((p, k) => `<td class="r scl${pcls(k)}">${lbMin(r, pinF(p))}</td>`).join('') : '';
-    const lbRows = lb.length ? `<tr class="pk-head lab-head"><td colspan="${5 + (sc ? 1 + pins.length : 0) + 1}">Labor <small>approximate</small></td></tr>` + lb.map((r, k) => `<tr class="pk-row lab-row">
-        <td><span class="pk-cell"><button class="rc-del rc-del-l" data-lbdel="${id}:${k}" title="Remove this task">×</button><input class="pk-name" data-lbf="${id}:${k}:name" data-fk="lbn-${id}-${k}" value="${NL.esc(r.name || '')}" placeholder="e.g. Prep"><button class="pk-more" data-lbedit="${id}:${k}" title="Edit this task">⋯</button></span></td>
-        <td class="r w"><input class="num" inputmode="decimal" data-lbf="${id}:${k}:minutes" data-fk="lbm-${id}-${k}" value="${r.minutes ?? ''}" placeholder="—" title="Minutes"><span class="u">min</span></td>
-        <td class="r lab-ppl">×<input class="num" inputmode="decimal" data-lbf="${id}:${k}:people" data-fk="lbp-${id}-${k}" value="${r.people ?? 1}" title="People"></td>
-        <td class="r lab-rate">$<input class="num" inputmode="decimal" data-lbf="${id}:${k}:rate" data-fk="lbr-${id}-${k}" value="${r.rate ?? ''}" placeholder="—" title="Rate per hour"><span class="u">/h</span></td>
+    const lbScaled = r => (showSc ? `<td class="r scl">${lbMin(r, sc.f)}</td>` : '') + vp.map(({ p, k }) => `<td class="r scl${pcls(k)}">${lbMin(r, pinF(p))}</td>`).join('');
+    const lbRows = lb.length ? `<tr class="pk-head lab-head"><td colspan="${ncol}">Labor <small>approximate</small></td></tr>` + lb.map((r, k) => `<tr class="pk-row lab-row">
+        <td><span class="pk-cell"><button class="rc-del rc-del-l" data-lbdel="${id}:${k}" title="Remove this task">×</button><input ${RO}class="pk-name" data-lbf="${id}:${k}:name" data-fk="lbn-${id}-${k}" value="${NL.esc(r.name || '')}" placeholder="e.g. Prep"><button class="pk-more" data-lbedit="${id}:${k}" title="Edit this task">⋯</button></span></td>
+        <td class="r w"><input ${RO}class="num" inputmode="decimal" data-lbf="${id}:${k}:minutes" data-fk="lbm-${id}-${k}" value="${r.minutes ?? ''}" placeholder="—" title="Minutes"><span class="u">min</span></td>
+        <td class="r lab-ppl pc">×<input ${RO}class="num" inputmode="decimal" data-lbf="${id}:${k}:people" data-fk="lbp-${id}-${k}" value="${r.people ?? 1}" title="People"></td>
+        <td class="r lab-rate bk">$<input ${RO}class="num" inputmode="decimal" data-lbf="${id}:${k}:rate" data-fk="lbr-${id}-${k}" value="${r.rate ?? ''}" placeholder="—" title="Rate per hour"><span class="u">/h</span></td>
         <td class="r cost" title="${r.minutes ?? '?'} min × ${r.people ?? 1} × ${r.rate != null ? NL.money(r.rate) : '?'}/h">${laborCost(r) == null ? '—' : NL.money(laborCost(r))}</td>
         ${lbScaled(r)}<td class="x"></td></tr>`).join('') : '';
-    const costRow = () => `<tr class="rc-costrow" ${cc.missing ? `title="${cc.missing} ingredient(s) have no price yet, so these are minimums"` : ''}><td>Cost</td><td class="r w" ${costTip ? `title="${costTip}"` : ''}>${NL.money(costAll)}${allStar}</td><td></td><td></td><td></td>${costCellFor(sc.f)}${pins.map((p, k) => costCellFor(pinF(p), p, k)).join('')}<td></td></tr>`;
-    const scCell = g => sc ? `<td class="r scl">${NL.fmt(g * sc.f, 2)}<span class="u">g</span></td>` + pins.map((p, k) => `<td class="r scl${pcls(k)}">${NL.fmt(g * pinF(p), 2)}<span class="u">g</span></td>`).join('') : '';
+    const costRow = () => `<tr class="rc-costrow" ${cc.missing ? `title="${cc.missing} ingredient(s) have no price yet, so these are minimums"` : ''}><td>Cost</td><td class="r w" ${costTip ? `title="${costTip}"` : ''}>${NL.money(costAll)}${allStar}</td><td class="pc"></td><td class="bk"></td><td class="cost"></td>${showSc ? costCellFor(sc.f) : ''}${vp.map(({ p, k }) => costCellFor(pinF(p), p, k)).join('')}<td></td></tr>`;
+    const scCell = g => (showSc ? `<td class="r scl">${NL.fmt(g * sc.f, 2)}<span class="u">g</span></td>` : '') + vp.map(({ p, k }) => `<td class="r scl${pcls(k)}">${NL.fmt(g * pinF(p), 2)}<span class="u">g</span></td>`).join('');
     const rows = a.items.map((it, idx) => {
       const sid = subIdOf(it.ref);
       const inBase = bset.includes(idx), bpct = baseAmt > 0 ? +((+it.amount || 0) / baseAmt * 100).toFixed(2) : null;
       const bbtn = `<button class="bk-b ${inBase ? 'on' : ''}" data-togbase="${id}:${idx}" title="${inBase ? 'Part of the base. Click to remove it from the base' : 'Click to add this ingredient to the base (100%)'}">B</button>`;
       const bk = inBase
         ? `<td class="r bk base"><span class="bk-base" title="Share of the base (${NL.esc(bname)})">${bpct == null ? '—' : NL.fmt(bpct, 2) + '%'}</span>${bbtn}</td>`
-        : `<td class="r bk"><span class="bk-in"><input class="num" inputmode="decimal" data-fk="bk-${id}-${idx}" data-bk="${id}:${idx}" value="${bpct ?? ''}" ${baseAmt > 0 ? 'title="Baker %: type a % to set this weight from the base"' : `disabled placeholder="—" title="${bset.length ? 'The base has no weight yet' : 'Press B on an ingredient to choose the base'}"`}>%</span>${bbtn}</td>`;
+        : `<td class="r bk"><span class="bk-in"><input ${RO}class="num" inputmode="decimal" data-fk="bk-${id}-${idx}" data-bk="${id}:${idx}" value="${bpct ?? ''}" ${baseAmt > 0 ? 'title="Baker %: type a % to set this weight from the base"' : `disabled placeholder="—" title="${bset.length ? 'The base has no weight yet' : 'Press B on an ingredient to choose the base'}"`}>%</span>${bbtn}</td>`;
       const pct = `<td class="r pc">${NL.pct(+it.amount || 0, c.batch)}</td>${bk}${costCell(it)}${scCell(+it.amount || 0)}`;
       const aerr = amtErr[`${id}:${idx}`];
-      const amt = `<td class="r w"><input class="num ${aerr ? 'bad' : ''}" inputmode="decimal" data-fk="amt-${id}-${idx}" data-amt="${id}:${idx}" value="${it.amount}" ${aerr ? `title="${NL.esc(aerr)}"` : ''}><span class="u">g</span></td>`;
+      const amt = `<td class="r w"><input ${RO}class="num ${aerr ? 'bad' : ''}" inputmode="decimal" data-fk="amt-${id}-${idx}" data-amt="${id}:${idx}" value="${it.amount}" ${aerr ? `title="${NL.esc(aerr)}"` : ''}><span class="u">g</span></td>`;
       const delL = `<button class="rc-del rc-del-l" data-delrow="${id}:${idx}" title="Remove this row">×</button>`, del = '<td class="x"></td>';
       if (sid && A(sid)) {
         return `<tr class="sub" data-sub="${sid}" style="--rc:${colorOf(sid)}"><td>${delL}<span class="rc-sublink" data-goto="${sid}">${NL.esc(A(sid).name)}</span><span class="rc-see" data-goto="${sid}">see assembly ${view === 'sheet' ? (orderIdx[sid] > orderIdx[id] ? '↓' : '↑') : '→'}</span></td>${amt}${pct}${del}</tr>`;
       }
       const ing = NL.ingMap[it.ref.slice(4)];
       return `<tr><td>${delL}${NL.esc(ing?.name || it.ref)}<span class="rc-vendor">${NL.esc(ing?.vendor || '')}</span></td>${amt}${pct}${del}</tr>`;
-    }).join('') || `<tr class="rc-empty"><td colspan="${sc ? 7 + pins.length : 6}">No ingredients yet — use the buttons below or drag from the library</td></tr>`;
+    }).join('') || `<tr class="rc-empty"><td colspan="${ncol}">No ingredients yet — use the buttons below or drag from the library</td></tr>`;
     const kcal = Math.round(c.perG[0] * (isRoot ? c.yielded : 100));
-    return `<div class="rcard ${isRoot ? 'final' : ''} ${a.collapsed ? 'rc-collapsed' : ''} ${!isRoot && !parents.length ? 'orphan' : ''}" data-id="${id}" style="${view === 'sheet' ? `--depth:${depthMap[id] || 0};` : `left:${a.x}px;top:${a.y}px;`}--c:${colorOf(id)};--extra:${pins.length}">
+    const extra = scaling && !flip ? Math.max(0, pins.length - 2) : 0;
+    return `<div class="rcard ${isRoot ? 'final' : ''} ${a.collapsed ? 'rc-collapsed' : ''} ${!isRoot && !parents.length ? 'orphan' : ''} ${scaling ? 'face-scale' : 'face-build'} ${flip ? 'flipface' : ''} ${flipIn[id] ? 'flip-in' : ''}" data-id="${id}" style="${view === 'sheet' ? `--depth:${depthMap[id] || 0};` : `left:${a.x}px;top:${a.y}px;`}--c:${colorOf(id)};--extra:${extra}">
       ${isRoot ? '' : `<span class="port" data-port="${id}" title="Drag onto the assembly that uses this card"></span>`}
       <div class="rc-top" data-drag>
         <div class="rc-kick-row"><div class="rc-kicker">${kicker}</div>${kind}</div>
@@ -127,6 +151,7 @@
           <span class="sv-grip" data-grip="${id}" title="Drag to move this card up or down">⠿</span>
           <input class="rc-title" data-fk="title-${id}" data-title="${id}" value="${NL.esc(a.name)}">
           <button class="rc-ib sv-only" data-move="${id}:-1" title="Move card up">↑</button><button class="rc-ib sv-only" data-move="${id}:1" title="Move card down">↓</button>
+          <span class="rc-face"><button class="${scaling ? '' : 'on'}" data-face="${id}:build" title="Build the recipe: weights, %, packaging, labor, procedure">Building</button><button class="${scaling ? 'on' : ''}" data-face="${id}:scale" ${c.batch > 0 ? `title="${scaleStyle === 'flip' ? 'Flip to the scaling side' : 'Show scaling, hide building columns'}: scaled and pinned columns with cost"` : 'disabled title="Add ingredient weights first"'}>Scaling</button></span>
           <button class="rc-ib" data-collapse="${id}" title="${a.collapsed ? 'Expand' : 'Collapse'}">${a.collapsed ? '▸' : '▾'}</button>
           <button class="rc-ib fav ${favOf(id) ? 'on' : ''}" data-fav="${id}" title="${favOf(id) ? 'In your favorites. Click to update or remove' : 'Save this card to favorites'}">${favOf(id) ? '★' : '☆'}</button>
           <button class="rc-ib" data-copycard="${id}" title="Copy this card${descendants(id).size ? ' (with its sub-assembly cards)' : ''}. Paste into any tab with 📋 Paste card or Ctrl+V">⧉</button>
@@ -141,14 +166,14 @@
         </div>
       </div>
       <div class="rc-body">
-        <table class="rc-tbl"><thead><tr><th>Ingredient</th><th class="r">Weight</th><th class="r">Relative %</th><th class="r" title="Baker's percentage: weight relative to the base ingredient (100%)">Baker %</th><th class="r" title="Cost of this row: price per kg × weight">Cost</th>${sc ? `<th class="r scl" title="Weights for the target below; your Weight column is not changed">Scaled by ${sc.mode}<button class="scl-pin" data-sclpin="${id}" title="Pin this scaling as its own column, to compare with others">📌</button></th>` + pins.map((p, k) => `<th class="r scl${pcls(k)}" title="Pinned: ${p.mode === 'portion' ? 'scale by portion' : 'scale by yield'}">${p.mode === 'portion' ? `${NL.fmt(p.size, 1)} g × ${NL.fmt(p.count, 2)}` : p.mode === 'base' ? `Base ${NL.fmt(p.target, 1)} g` : `Yield ${NL.fmt(p.target, 1)} g`}<button class="scl-unpin" data-sclunpin="${id}:${k}" title="Remove this column">×</button>${isRoot ? '' : `<div><button class="scl-use ${k === activeK ? 'on' : ''}" data-scluse="${id}:${k}" title="${k === activeK ? 'Active scaling. Click to clear' : `Make this the active scaling (portion size ${NL.fmt(pinF(p) * c.yielded, 2)} g). Your weights are not changed`}">${k === activeK ? '✓ In use' : 'Use'}</button></div>`}</th>`).join('') : ''}<th></th></tr></thead><tbody>${rows}${pkRows}${lbRows}</tbody>
-          ${a.items.length ? `<tfoot>${bset.length > 1 || a.baseName ? `<tr class="rc-base"><td><span class="rc-base-nm" data-basename="${id}" title="Click to rename the base">${NL.esc(bname)}${a.baseName ? ' <small>(Base)</small>' : ''}</span></td><td class="r w">${NL.fmt(baseAmt, 2)}<span class="u">g</span></td><td class="r pc">${NL.pct(baseAmt, c.batch)}</td><td class="r bk">100%</td><td class="r cost"></td>${scCell(baseAmt)}<td class="x"><button class="rc-del rc-base-x" data-delbase="${id}" title="Remove this base (clears its name and B marks)">×</button></td></tr>` : ''}<tr class="rc-tot"><td>Total</td><td class="r w">${NL.fmt(c.batch, 2)}<span class="u">g</span>${gross(c.batch)}</td><td class="r pc">100%</td><td class="r bk" title="Total formula percentage">${baseAmt > 0 ? NL.fmt(c.batch / baseAmt * 100, 1) + '%' : `<span class="bk-hint">${bset.length ? 'base has no weight' : 'press B to pick a base'}</span>`}</td><td class="r cost" ${costTip ? `title="${costTip}"` : ''}>${NL.money(costAll)}${allStar}</td>${sc ? `<td class="r scl">${NL.fmt(c.batch * sc.f, 2)}<span class="u">g</span>${gross(c.batch, sc.f)}</td>` + pins.map((p, k) => `<td class="r scl${pcls(k)}">${NL.fmt(c.batch * pinF(p), 2)}<span class="u">g</span>${gross(c.batch, pinF(p))}</td>`).join('') : ''}<td></td></tr>${sc ? costRow() : ''}</tfoot>` : ''}</table>
-        <div class="rc-sec rc-fw ${fwErr[id] ? 'bad' : ''}">
+        <table class="rc-tbl"><thead><tr><th>Ingredient</th><th class="r hc-w">Weight</th><th class="r hc-pc">Relative %</th><th class="r hc-bk" title="Baker's percentage: weight relative to the base ingredient (100%)">Baker %</th><th class="r hc-cost" title="Cost of this row: price per kg × weight">Cost</th>${showSc ? `<th class="r scl" title="Weights for the target below; your Weight column is not changed">Scaled by ${sc.mode}<button class="scl-pin" data-sclpin="${id}" title="Pin this scaling as its own column, to compare with others">📌</button></th>` : ''}${vp.map(({ p, k }) => `<th class="r scl${pcls(k)}" title="Pinned: ${p.mode === 'portion' ? 'scale by portion' : 'scale by yield'}">${p.mode === 'portion' ? `${NL.fmt(p.size, 1)} g × ${NL.fmt(p.count, 2)}` : p.mode === 'base' ? `Base ${NL.fmt(p.target, 1)} g` : `Yield ${NL.fmt(p.target, 1)} g`}<button class="scl-unpin" data-sclunpin="${id}:${k}" title="Remove this column">×</button>${isRoot ? '' : `<div><button class="scl-use ${k === activeK ? 'on' : ''}" data-scluse="${id}:${k}" title="${k === activeK ? 'Active scaling. Click to clear' : `Make this the active scaling (portion size ${NL.fmt(pinF(p) * c.yielded, 2)} g). Your weights are not changed`}">${k === activeK ? '✓ In use' : 'Use'}</button></div>`}</th>`).join('')}<th></th></tr></thead><tbody>${rows}${pkRows}${lbRows}</tbody>
+          ${a.items.length ? `<tfoot>${bset.length > 1 || a.baseName ? `<tr class="rc-base"><td><span class="rc-base-nm" data-basename="${id}" title="Click to rename the base">${NL.esc(bname)}${a.baseName ? ' <small>(Base)</small>' : ''}</span></td><td class="r w">${NL.fmt(baseAmt, 2)}<span class="u">g</span></td><td class="r pc">${NL.pct(baseAmt, c.batch)}</td><td class="r bk">100%</td><td class="r cost"></td>${scCell(baseAmt)}<td class="x"><button class="rc-del rc-base-x" data-delbase="${id}" title="Remove this base (clears its name and B marks)">×</button></td></tr>` : ''}<tr class="rc-tot"><td>Total</td><td class="r w">${NL.fmt(c.batch, 2)}<span class="u">g</span>${gross(c.batch)}</td><td class="r pc">100%</td><td class="r bk" title="Total formula percentage">${baseAmt > 0 ? NL.fmt(c.batch / baseAmt * 100, 1) + '%' : `<span class="bk-hint">${bset.length ? 'base has no weight' : 'press B to pick a base'}</span>`}</td><td class="r cost" ${costTip ? `title="${costTip}"` : ''}>${NL.money(costAll)}${allStar}</td>${showSc ? `<td class="r scl">${NL.fmt(c.batch * sc.f, 2)}<span class="u">g</span>${gross(c.batch, sc.f)}</td>` : ''}${vp.map(({ p, k }) => `<td class="r scl${pcls(k)}">${NL.fmt(c.batch * pinF(p), 2)}<span class="u">g</span>${gross(c.batch, pinF(p))}</td>`).join('')}<td></td></tr>${showSc || vp.length ? costRow() : ''}</tfoot>` : ''}</table>
+        <div class="rc-sec rc-fw bo ${fwErr[id] ? 'bad' : ''}">
           <label>${isRoot ? 'Final portion weight' : 'Final weight after cooking'} <input class="num" inputmode="decimal" data-fk="fw-${id}" data-fw="${id}" value="${+c.yielded.toFixed(1)}" placeholder="${+c.batch.toFixed(1)}"> g</label>
           <span class="rc-fw-res">from ${NL.fmt(c.batch)} g · <b>Yield ${NL.fmt(NL.yieldPct(a.yieldLoss), 1)}%</b> · Loss ${NL.fmt(+a.yieldLoss || 0, 1)}% (${NL.fmt(c.lossG)} g)</span>
           ${fwErr[id] ? `<div class="rc-fw-err">⚠ ${NL.esc(fwErr[id])}</div>` : ''}
         </div>
-        <div class="rc-add">
+        <div class="rc-add bo">
           <button data-addi="${id}">+ Ingredient</button>
           <button data-basename="${id}" title="${a.baseName ? 'Rename the base' : 'Name the base (e.g. Total Flour), then press B on each ingredient that belongs to it'}">${a.baseName ? '✎ Rename base' : '+ Base'}</button>
           <button class="s" data-adds="${id}">＋ New sub-assembly</button>
@@ -156,18 +181,18 @@
           <button class="pk" data-pkadd="${id}" title="Add a packaging item (pouch, film, box…) with its cost">+ Packaging</button>
           <button class="lb" data-lbadd="${id}" title="Add an approximate labor cost (task time × people × hourly rate)">+ Labor</button>
         </div>
-        ${isRoot && !a.items.length ? `<div class="rc-sec guide"><b>Building from scratch</b><ol>
+        ${isRoot && !a.items.length ? `<div class="rc-sec guide bo"><b>Building from scratch</b><ol>
           <li>Name your assembly in the title above.</li>
           <li>Add raw ingredients with <b>+ Ingredient</b>, or drag them from the library onto this card.</li>
           <li>Need a component (a sauce, a broth)? Click <b>＋ New sub-assembly</b>. It opens its own linked card where you add its ingredients.</li>
           <li>Type the weight on each row. Batch, yield, % and nutrition update as you type.</li></ol></div>` : ''}
-        ${c.batch > 0 ? `<div class="rc-sec rc-bscale">${scaleControls(id, a, c, sc)}<span class="faint scl-note">reads your weights · never changes them</span></div>` : ''}
-        ${nutSection(id, a, c, isRoot)}
-        <div class="rc-sec">
+        ${c.batch > 0 ? `<div class="rc-sec rc-bscale">${scaleControls(id, a, c, sc)}<span class="faint scl-note">${flip ? 'scaling side · read-only · press Building to edit' : 'reads your weights · never changes them'}</span></div>` : ''}
+        <div class="bo">${nutSection(id, a, c, isRoot)}</div>
+        <div class="rc-sec bo">
           <div class="rc-h">Procedure <button class="rc-mini" data-addstep="${id}">+ Step</button></div>
           <ol class="rc-steps">${(a.steps || []).map((s, i) => `<li><input data-fk="st-${id}-${i}" data-step="${id}:${i}" value="${NL.esc(s)}" placeholder="Describe this step…"><button class="rc-del" data-delstep="${id}:${i}">×</button></li>`).join('')}</ol>
         </div>
-        <div class="rc-sec">
+        <div class="rc-sec bo">
           <div class="rc-h">Notes · heating · tasting</div>
           <textarea class="rc-notes" data-fk="nt-${id}" data-notes="${id}" placeholder="Add notes…">${NL.esc(a.notes || '')}</textarea>
         </div>
@@ -765,6 +790,7 @@
     if (split.card && !S.asm[split.card]) split.card = '';
     const ids = split.card ? [split.card] : ord;
     cardsEl.innerHTML = ids.length ? ids.map(cardHTML).join('') : SHEET_EMPTY;
+    stickCols(cardsEl);
     $('#split').className = `split lk-${prefs.links} w-${prefs.width}`;
     drawSheetLinks();
     const tabs = wb.all(), L = side === 'right' ? leftCtx.S : S;
@@ -1120,6 +1146,7 @@
     if ((b = q('[data-cut]'))) { const [pid, sid] = b.dataset.cut.split(':'); return unlink(pid, sid); }
     if ((b = q('[data-kind]'))) { const [k, id] = b.dataset.kind.split(':'); return setKind(id, k); }
     if ((b = q('[data-emptyadd]'))) return addCard();
+    if ((b = q('[data-face]'))) { const [id, f] = b.dataset.face.split(':'); if ((A(id).face === 'scale' ? 'scale' : 'build') !== f) setFace(id, f); return; }
     if ((b = q('[data-collapse]'))) { const a = A(b.dataset.collapse); a.collapsed = !a.collapsed; render(); commit(); return; }
     if ((b = q('[data-addstep]'))) { const a = A(b.dataset.addstep); a.steps.push(''); render(); commit(); cardsEl.querySelector(`[data-step="${b.dataset.addstep}:${a.steps.length - 1}"]`)?.focus(); return; }
     if ((b = q('[data-delstep]'))) { const [id, i] = b.dataset.delstep.split(':'); A(id).steps.splice(+i, 1); render(); commit(); }
@@ -1159,6 +1186,8 @@
   $('#arrange').onclick = () => { useSide('left'); arrange(); commit(); vp.fit(bounds()); };
   $('#zin').onclick = () => vp.zoom(1.2);
   $('#zout').onclick = () => vp.zoom(1 / 1.2);
+  const styleSel = $('#scaleStyle'); styleSel.value = scaleStyle;
+  styleSel.onchange = () => { scaleStyle = styleSel.value === 'hide' ? 'hide' : 'flip'; try { localStorage.setItem('nlv3_scale_style', scaleStyle); } catch { } render(); };
   $('#toggleNut').onclick = () => {
     useSide('left');
     const m = $('#cmain'); m.classList.toggle('show-nut');
