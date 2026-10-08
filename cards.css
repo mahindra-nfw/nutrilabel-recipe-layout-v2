@@ -182,7 +182,7 @@ tr:hover .rc-del { visibility: visible; } .rc-del:hover { color: var(--danger); 
 .view-seg button { border: 0; background: var(--panel); padding: 5px 12px; font-weight: 600; font-size: 13px; color: var(--muted); cursor: pointer; }
 .view-seg button + button { border-left: 1px solid var(--line); }
 .view-seg button.on { background: var(--accent); color: #fff; }
-body.view-sheet #vp, body.view-sheet #arrange, body.view-sheet #fit { display: none !important; }
+body.view-sheet #vp, body.view-sheet #arrange, body.view-sheet #fit, body.view-sheet #linesBtn { display: none !important; }
 body:not(.view-sheet) .sheetview { display: none; }
 
 /* sheet view */
@@ -477,3 +477,24 @@ body:not(.view-sheet) .sheetview { display: none; }
 .rc-tbl th.scl .scl-unpin { padding-left: 3px; }
 .rc-tbl th.scl.pinned { position: relative; padding-left: 16px; padding-right: 16px; }
 .rc-tbl th.scl .scl-unpin { position: absolute; top: 6px; right: 3px; padding: 0; line-height: 1; }
+
+/* Final card, Scaling side: "Sub portions" column = one portion using each sub-assembly's portion in use */
+.rc-tbl .scl.fromsub { background: color-mix(in srgb, var(--asm) 9%, transparent); }
+.rc-tbl th.scl.fromsub { color: var(--asm); }
+.rc-costrow td.scl.fromsub { background: color-mix(in srgb, var(--asm) 9%, var(--subtle)); }
+.rc-tbl .scl.fromsub .sub-g { color: var(--asm); font-weight: 700; }
+.sub-pull { margin-top: 2px; border: 1px dashed color-mix(in srgb, var(--asm) 60%, var(--line)); background: color-mix(in srgb, var(--asm) 7%, var(--panel)); color: var(--asm); border-radius: 6px; padding: 1px 8px; font-size: 10.5px; font-weight: 700; cursor: pointer; }
+.sub-pull:hover { border-style: solid; }
+.sub-pull.on { border-style: solid; background: var(--asm); border-color: var(--asm); color: #fff; }
+
+
+/* board: link lines hidden with the Lines button (a line being dragged to link cards still shows) */
+body.hide-links #links .lk, body.hide-links .port { display: none; }
+#linesBtn.off { opacity: .65; }
+
+/* Scaling side (both styles): the recipe's own values are locked, only the scaled columns change */
+.rcard.face-scale .rc-tbl input { border-color: transparent; background: transparent; pointer-events: none; }
+.rcard.face-scale .rc-del, .rcard.face-scale .rc-del-l, .rcard.face-scale .bk-b, .rcard.face-scale .pk-more { display: none; }
+
+/* Final card header: number of sub-assemblies */
+.rc-stats > .rc-count b { font-size: 13px; }

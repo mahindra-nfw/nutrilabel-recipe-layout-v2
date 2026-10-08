@@ -34,10 +34,10 @@ For Claude's browser preview, `.claude/launch.json` has the config `nutrilabel-v
 
 ## Data model (per tab, saved in localStorage)
 `S = { root, asm: { id: assembly } }`. An assembly has `name, items[{ref:'ing:<id>'|'asm:<id>', amount}], yieldLoss, steps, notes`, plus optional:
-`scaleMode/scaleTarget/portionSize/portionCount/baseTarget`, `scalePins[{id,mode,target,size,count}]`, `activePin`,
+`scaleMode/scaleTarget/portionSize/portionCount/baseTarget`, `scalePins[{id,mode,target,size,count,showCost}]`, `activePin`, `scaleShowCost` / `subShowCost` (g|$ switch), `pulled{subId:true}` (Final only: rows pulled into its Sub portions column),
 `packaging[{id,name,weight,cost,l,w,h,unit}]`, `labor[{id,name,minutes,people,rate}]`, `face` ('scale' = Scaling side shown), `collapsed`, `x/y` (board position).
 
-localStorage keys (all prefixed `nlv3_`): `cards_book` (all tabs), `favorites`, `custom_ingredients`, `prices`, `theme`, `sheet_prefs`, `side_hidden`, `panel_widths`, `card_clipboard`, `labor_rate`, `scale_style`.
+localStorage keys (all prefixed `nlv3_`): `cards_book` (all tabs), `favorites`, `custom_ingredients`, `prices`, `theme`, `sheet_prefs`, `side_hidden`, `panel_widths`, `card_clipboard`, `labor_rate`, `scale_style`, `hide_links`.
 Data lives in the browser per site address (localhost and the live site are separate) and does not travel with the repo.
 
 ## Testing

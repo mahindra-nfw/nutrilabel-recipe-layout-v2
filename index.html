@@ -9,8 +9,8 @@
     try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('nlv2_')) { const n = 'nlv3_' + k.slice(5); if (localStorage.getItem(n) === null) localStorage.setItem(n, localStorage.getItem(k)); } } } catch (e) { }
   </script>
   <script>try { document.documentElement.dataset.theme = localStorage.getItem('nlv3_theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch (e) { }</script>
-  <link rel="stylesheet" href="shared/base.css?v=202610081213">
-  <link rel="stylesheet" href="cards.css?v=202610081213">
+  <link rel="stylesheet" href="shared/base.css?v=202610081527">
+  <link rel="stylesheet" href="cards.css?v=202610081527">
 </head>
 <body data-layout="cards">
   <header class="topbar">
@@ -22,6 +22,7 @@
     <button class="btn" id="redo" title="Redo (Ctrl+Y)">↷</button>
     <button class="btn" id="arrange">⇶ Auto-arrange</button>
     <button class="btn" id="fit">⤢ Fit</button>
+    <button class="btn" id="linesBtn" title="Show or hide the lines between cards (the “see assembly” links still jump to each card)">⤳ Lines</button>
     <label class="btn tb-sel" title="How the Scaling button on each card works: flip the card to a scaling side, or hide the building columns on the same card">Scaling view <select id="scaleStyle"><option value="flip">Flip card</option><option value="hide">Hide columns</option></select></label>
     <button class="btn" id="toggleNut">All facts ▸</button>
     <button class="btn" id="addCard" title="Add an unconnected card to this assembly">＋ Add card</button>
@@ -90,8 +91,8 @@
     </section>
     <aside class="nut" id="nut"></aside>
   </main>
-  <script src="shared/data.js?v=202610081213"></script>
-  <script src="shared/engine.js?v=202610081213"></script>
-  <script src="cards.js?v=202610081213"></script>
+  <script src="shared/data.js?v=202610081527"></script>
+  <script src="shared/engine.js?v=202610081527"></script>
+  <script src="cards.js?v=202610081527"></script>
 </body>
 </html>

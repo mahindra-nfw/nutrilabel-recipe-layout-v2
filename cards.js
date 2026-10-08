@@ -93,7 +93,7 @@
     };
     const kicker = isRoot ? 'Final assembly · per portion'
       : parents.length ? 'Sub-assembly · used in ' + parents.map(p => `<a data-goto="${p.pid}">${NL.esc(A(p.pid).name)}</a> ${psLabel(p)}`).join(', ')
-        : 'Sub-assembly · not used yet. ' + (view === 'sheet' ? 'Link it from the card that uses it with ↳ Link existing sub-assembly' : 'Drag the ● on the left onto an assembly to link it');
+        : 'Sub-assembly · not used yet. ' + (view === 'sheet' ? 'Link it with ↳ Link to assembly' : 'Drag the ● on the left onto an assembly to link it');
     const bset = baseSet(a), baseAmt = baseTotal(a), bname = baseLabel(a, bset), sc = scaleOf(a, c, parents, isRoot);
     // pinned scalings keep their target and recalculate from the current weights
     const pins = a.scalePins || [], pinF = p => pinFactor(p, c, baseAmt);
@@ -103,7 +103,16 @@
     // Building shows the recipe plus only the column in use; Scaling shows the live scaled column and every pinned column
     const scaling = a.face === 'scale' && c.batch > 0, flip = scaling && scaleStyle === 'flip', showSc = scaling;
     const vp = scaling ? pins.map((p, k) => ({ p, k })) : activeK >= 0 ? [{ p: pins[activeK], k: activeK }] : [];
-    const ncol = 6 + (showSc ? 1 : 0) + vp.length, RO = flip ? 'readonly tabindex="-1" ' : '';
+    // Final card, Scaling side: one portion rebuilt with each sub-assembly's portion in use (the Final's own weights never change)
+    const subUse = isRoot && scaling ? a.items.map(it => {
+      const sid = subIdOf(it.ref), s = sid && A(sid), q = s && activePin(s);
+      if (!q) return null;
+      const g = pinPortion(q, calc[sid], baseTotal(s));
+      return Math.abs(g - (+it.amount || 0)) < 0.005 ? null : { sid, g, on: !!a.pulled?.[sid] };
+    }) : [];
+    const subG = idx => subUse[idx]?.on ? subUse[idx].g : +a.items[idx].amount || 0;
+    const showSub = subUse.some(u => u?.on);
+    const ncol = 6 + (showSc ? 1 : 0) + (showSub ? 1 : 0) + vp.length, RO = scaling ? 'readonly tabindex="-1" ' : ''; // the Scaling side never edits the recipe
     // cost of the batch at each scaling (portion scalings also show cost per portion)
     const star = cc.missing ? '*' : '';
     const costCellFor = (f, p, k) => `<td class="r scl${p ? pcls(k) : ''}">${NL.money(costAll * f)}${allStar}${(p || sc).mode === 'portion' ? `<div class="scl-pp">${NL.money(costAll * f / ((p || sc).count || 1))} / portion</div>` : ''}</td>`;
@@ -113,9 +122,11 @@
     const allMissing = cc.missing + pkMissing + lbMissing, allStar = allMissing ? '*' : '', costAll = cc.batch + pkTotal + lbTotal;
     const costTip = pk.length || lb.length ? `Ingredients ${NL.money(cc.batch)}${pk.length ? ` + packaging ${NL.money(pkTotal)}` : ''}${lb.length ? ` + labor ${NL.money(lbTotal)}` : ''}${allMissing ? `. ${allMissing} item(s) have no price yet` : ''}` : (cc.missing ? `${cc.missing} ingredient(s) have no price yet` : '');
     // each scaled column shows weights (g) or costs ($); the live column keeps its choice on the card, pinned ones on the pin
-    const showCost = k => !!(k < 0 ? a.scaleShowCost : pins[k]?.showCost);
-    const scCols = [...(showSc ? [{ f: sc.f, k: -1, cls: '' }] : []), ...vp.map(({ p, k }) => ({ f: pinF(p), k, cls: pcls(k) }))];
-    const scCells = (wt, usd) => scCols.map(({ f, k, cls }) => `<td class="r scl${cls}">${showCost(k) ? (usd == null ? '<span class="faint">—</span>' : NL.money(usd.v * f) + (usd.miss ? '*' : '')) : wt(f)}</td>`).join('');
+    const showCost = k => !!(k === 'sub' ? a.subShowCost : k < 0 ? a.scaleShowCost : pins[k]?.showCost);
+    const scCols = [...(showSc ? [{ f: sc.f, k: -1, cls: '' }] : []), ...(showSub ? [{ f: 1, k: 'sub', cls: ' fromsub' }] : []), ...vp.map(({ p, k }) => ({ f: pinF(p), k, cls: pcls(k) }))];
+    const money1 = (usd, f) => usd == null ? '<span class="faint">—</span>' : NL.money(usd.v * f) + (usd.miss ? '*' : '');
+    // alt = { html, usd }: what the Sub portions column shows for this row (otherwise the row as typed)
+    const scCells = (wt, usd, alt) => scCols.map(({ f, k, cls }) => `<td class="r scl${cls}">${k === 'sub' && alt ? (showCost(k) ? money1(alt.usd, 1) : alt.html) : showCost(k) ? money1(usd, f) : wt(f)}</td>`).join('');
     const scTog = k => `<span class="scl-tog" title="Show weights or costs in this column"><button class="${showCost(k) ? '' : 'on'}" data-sclshow="${id}:${k}:g">g</button><button class="${showCost(k) ? 'on' : ''}" data-sclshow="${id}:${k}:$">$</button></span>`;
     const pkW1 = (r, f) => r.weight != null ? `${NL.fmt(r.weight * f, 2)}<span class="u">g</span>` : '';
     const pkScaled = r => scCells(f => pkW1(r, f), r.cost != null ? { v: +r.cost } : null);
@@ -134,8 +145,18 @@
         <td class="r lab-rate bk">$<input ${RO}class="num" inputmode="decimal" data-lbf="${id}:${k}:rate" data-fk="lbr-${id}-${k}" value="${r.rate ?? ''}" placeholder="—" title="Rate per hour"><span class="u">/h</span></td>
         <td class="r cost" title="${r.minutes ?? '?'} min × ${r.people ?? 1} × ${r.rate != null ? NL.money(r.rate) : '?'}/h">${laborCost(r) == null ? '—' : NL.money(laborCost(r))}</td>
         ${lbScaled(r)}<td class="x"></td></tr>`).join('') : '';
-    const costRow = () => `<tr class="rc-costrow" ${cc.missing ? `title="${cc.missing} ingredient(s) have no price yet, so these are minimums"` : ''}><td>Cost</td><td class="r w" ${costTip ? `title="${costTip}"` : ''}>${NL.money(costAll)}${allStar}</td><td class="pc"></td><td class="bk"></td><td class="cost"></td>${showSc ? costCellFor(sc.f) : ''}${vp.map(({ p, k }) => costCellFor(pinF(p), p, k)).join('')}<td></td></tr>`;
-    const scCell = (g, usd) => scCells(f => `${NL.fmt(g * f, 2)}<span class="u">g</span>`, usd);
+    const costRow = () => `<tr class="rc-costrow" ${cc.missing ? `title="${cc.missing} ingredient(s) have no price yet, so these are minimums"` : ''}><td>Cost</td><td class="r w" ${costTip ? `title="${costTip}"` : ''}>${NL.money(costAll)}${allStar}</td><td class="pc"></td><td class="bk"></td><td class="cost"></td>${showSc ? costCellFor(sc.f) : ''}${showSub ? `<td class="r scl fromsub">${NL.money(subAll)}${allStar}<div class="scl-pp">${NL.money(Math.abs(subAll - costAll))} ${subAll >= costAll ? 'more' : 'less'} / portion</div></td>` : ''}${vp.map(({ p, k }) => costCellFor(pinF(p), p, k)).join('')}<td></td></tr>`;
+    const scCell = (g, usd, alt) => scCells(f => `${NL.fmt(g * f, 2)}<span class="u">g</span>`, usd, alt);
+    const subCost = idx => { const it = a.items[idx], sid = subIdOf(it.ref), k = sid ? cost[sid] : null;
+      if (!sid) return rowCost(it); return k ? { v: subG(idx) * k.perG, miss: !!k.missing } : null; };
+    const subAlt = idx => ({ html: `<b class="sub-g">${NL.fmt(subG(idx), 2)}</b><span class="u">g</span>`, usd: subCost(idx) });
+    // totals for the Sub portions column
+    const subFood = a.items.reduce((t, _, idx) => t + subG(idx), 0);
+    const subAll = a.items.reduce((t, _, idx) => t + (subCost(idx)?.v || 0), 0) + pkTotal + lbTotal;
+    // the Pull button on a sub-assembly row whose card has a different portion in use (Final card, Scaling side)
+    const subNote = idx => { const u = subUse[idx]; if (!u) return '';
+      const g = `${NL.fmt(u.g, 2)} g`;
+      return `<div><button class="sub-pull ${u.on ? 'on' : ''}" data-subpull="${id}:${u.sid}" title="${u.on ? 'Pulled into the Sub portions column. Click to remove' : 'Use the portion in use on its card in the Sub portions column. Your weight here is not changed'}">${u.on ? '✓ Pulled ' + g : 'Pull ' + g}</button></div>`; };
     const rows = a.items.map((it, idx) => {
       const sid = subIdOf(it.ref);
       const inBase = bset.includes(idx), bpct = baseAmt > 0 ? +((+it.amount || 0) / baseAmt * 100).toFixed(2) : null;
@@ -143,12 +164,12 @@
       const bk = inBase
         ? `<td class="r bk base"><span class="bk-base" title="Share of the base (${NL.esc(bname)})">${bpct == null ? '—' : NL.fmt(bpct, 2) + '%'}</span>${bbtn}</td>`
         : `<td class="r bk"><span class="bk-in"><input ${RO}class="num" inputmode="decimal" data-fk="bk-${id}-${idx}" data-bk="${id}:${idx}" value="${bpct ?? ''}" ${baseAmt > 0 ? 'title="Baker %: type a % to set this weight from the base"' : `disabled placeholder="—" title="${bset.length ? 'The base has no weight yet' : 'Press B on an ingredient to choose the base'}"`}>%</span>${bbtn}</td>`;
-      const pct = `<td class="r pc">${NL.pct(+it.amount || 0, c.batch)}</td>${bk}${costCell(it)}${scCell(+it.amount || 0, rowCost(it))}`;
+      const pct = `<td class="r pc">${NL.pct(+it.amount || 0, c.batch)}</td>${bk}${costCell(it, scaling)}${scCell(+it.amount || 0, rowCost(it), subUse[idx]?.on ? subAlt(idx) : null)}`;
       const aerr = amtErr[`${id}:${idx}`];
       const amt = `<td class="r w"><input ${RO}class="num ${aerr ? 'bad' : ''}" inputmode="decimal" data-fk="amt-${id}-${idx}" data-amt="${id}:${idx}" value="${it.amount}" ${aerr ? `title="${NL.esc(aerr)}"` : ''}><span class="u">g</span></td>`;
       const delL = `<button class="rc-del rc-del-l" data-delrow="${id}:${idx}" title="Remove this row">×</button>`, del = '<td class="x"></td>';
       if (sid && A(sid)) {
-        return `<tr class="sub" data-sub="${sid}" style="--rc:${colorOf(sid)}"><td>${delL}<span class="rc-sublink" data-goto="${sid}">${NL.esc(A(sid).name)}</span><span class="rc-see" data-goto="${sid}">see assembly ${view === 'sheet' ? (orderIdx[sid] > orderIdx[id] ? '↓' : '↑') : '→'}</span></td>${amt}${pct}${del}</tr>`;
+        return `<tr class="sub" data-sub="${sid}" style="--rc:${colorOf(sid)}"><td>${delL}<span class="rc-sublink" data-goto="${sid}">${NL.esc(A(sid).name)}</span><span class="rc-see" data-goto="${sid}">see assembly ${view === 'sheet' ? (orderIdx[sid] > orderIdx[id] ? '↓' : '↑') : '→'}</span>${subNote(idx)}</td>${amt}${pct}${del}</tr>`;
       }
       const ing = NL.ingMap[it.ref.slice(4)];
       return `<tr><td>${delL}${NL.esc(ing?.name || it.ref)}<span class="rc-vendor">${NL.esc(ing?.vendor || '')}</span></td>${amt}${pct}${del}</tr>`;
@@ -171,6 +192,7 @@
         </div>
         <div class="rc-stats">
           <div><b>${NL.fmt(c.batch)} g</b><span>${isRoot ? 'Portion' : 'Batch'}</span></div>
+          ${isRoot ? (n => `<div class="rc-count" title="Sub-assemblies in this final assembly"><b>${n}</b><span>Sub-assembl${n === 1 ? 'y' : 'ies'}</span></div>`)(a.items.filter(it => subIdOf(it.ref)).length) : ''}
           <div><b>${NL.fmt(c.yielded)} g</b><span>Yield</span></div>
           <div><b>${NL.fmt(+a.yieldLoss || 0, 1)}% / ${NL.fmt(NL.yieldPct(a.yieldLoss), 1)}%</b><span>Loss / Yield</span></div>
           <div><b>${kcal}</b><span>${isRoot ? 'kcal / portion' : 'kcal / 100 g'}</span></div>
@@ -178,8 +200,8 @@
         </div>
       </div>
       <div class="rc-body">
-        <table class="rc-tbl"><thead><tr><th>Ingredient</th><th class="r hc-w">Weight</th><th class="r hc-pc">Relative %</th><th class="r hc-bk" title="Baker's percentage: weight relative to the base ingredient (100%)">Baker %</th><th class="r hc-cost" title="Cost of this row: price per kg × weight">Cost</th>${showSc ? `<th class="r scl" title="Weights for the target below; your Weight column is not changed">Scaled<div class="scl-ctl">${scTog(-1)}</div></th>` : ''}${vp.map(({ p, k }) => `<th class="r scl${pcls(k)}" title="Pinned: ${p.mode === 'portion' ? 'scale by portion' : 'scale by yield'}">${p.mode === 'portion' ? `${NL.fmt(p.size, 1)} g × ${NL.fmt(p.count, 2)}` : p.mode === 'base' ? `Base ${NL.fmt(p.target, 1)} g` : `Yield ${NL.fmt(p.target, 1)} g`}<button class="scl-unpin" data-sclunpin="${id}:${k}" title="Remove this column">×</button><div class="scl-ctl">${scTog(k)}</div></th>`).join('')}<th></th></tr></thead><tbody>${rows}${pkRows}${lbRows}</tbody>
-          ${a.items.length ? `<tfoot>${bset.length > 1 || a.baseName ? `<tr class="rc-base"><td><span class="rc-base-nm" data-basename="${id}" title="Click to rename the base">${NL.esc(bname)}${a.baseName ? ' <small>(Base)</small>' : ''}</span></td><td class="r w">${NL.fmt(baseAmt, 2)}<span class="u">g</span></td><td class="r pc">${NL.pct(baseAmt, c.batch)}</td><td class="r bk">100%</td><td class="r cost"></td>${scCell(baseAmt)}<td class="x"><button class="rc-del rc-base-x" data-delbase="${id}" title="Remove this base (clears its name and B marks)">×</button></td></tr>` : ''}<tr class="rc-tot"><td>Total</td><td class="r w">${NL.fmt(c.batch, 2)}<span class="u">g</span>${gross(c.batch)}</td><td class="r pc">100%</td><td class="r bk" title="Total formula percentage">${baseAmt > 0 ? NL.fmt(c.batch / baseAmt * 100, 1) + '%' : `<span class="bk-hint">${bset.length ? 'base has no weight' : 'press B to pick a base'}</span>`}</td><td class="r cost" ${costTip ? `title="${costTip}"` : ''}>${NL.money(costAll)}${allStar}</td>${scCells(f => `${NL.fmt(c.batch * f, 2)}<span class="u">g</span>${gross(c.batch, f)}`, { v: costAll, miss: allMissing > 0 })}<td></td></tr>${showSc || vp.length ? costRow() : ''}</tfoot>` : ''}</table>
+        <table class="rc-tbl"><thead><tr><th>Ingredient</th><th class="r hc-w">Weight</th><th class="r hc-pc">Relative %</th><th class="r hc-bk" title="Baker's percentage: weight relative to the base ingredient (100%)">Baker %</th><th class="r hc-cost" title="Cost of this row: price per kg × weight">Cost</th>${showSc ? `<th class="r scl" title="Weights for the target below; your Weight column is not changed">Scaled<div class="scl-ctl">${scTog(-1)}</div></th>` : ''}${showSub ? `<th class="r scl fromsub" title="One portion of this assembly using each sub-assembly's portion in use (chosen on each sub-assembly card). Your weights here are not changed">Sub portions<div class="scl-ctl">${scTog('sub')}</div></th>` : ''}${vp.map(({ p, k }) => `<th class="r scl${pcls(k)}" title="Pinned: ${p.mode === 'portion' ? 'scale by portion' : 'scale by yield'}">${p.mode === 'portion' ? `${NL.fmt(p.size, 1)} g × ${NL.fmt(p.count, 2)}` : p.mode === 'base' ? `Base ${NL.fmt(p.target, 1)} g` : `Yield ${NL.fmt(p.target, 1)} g`}<button class="scl-unpin" data-sclunpin="${id}:${k}" title="Remove this column">×</button><div class="scl-ctl">${scTog(k)}</div></th>`).join('')}<th></th></tr></thead><tbody>${rows}${pkRows}${lbRows}</tbody>
+          ${a.items.length ? `<tfoot>${bset.length > 1 || a.baseName ? `<tr class="rc-base"><td><span class="rc-base-nm" data-basename="${id}" title="Click to rename the base">${NL.esc(bname)}${a.baseName ? ' <small>(Base)</small>' : ''}</span></td><td class="r w">${NL.fmt(baseAmt, 2)}<span class="u">g</span></td><td class="r pc">${NL.pct(baseAmt, c.batch)}</td><td class="r bk">100%</td><td class="r cost"></td>${scCell(baseAmt)}<td class="x"><button class="rc-del rc-base-x" data-delbase="${id}" title="Remove this base (clears its name and B marks)">×</button></td></tr>` : ''}<tr class="rc-tot"><td>Total</td><td class="r w">${NL.fmt(c.batch, 2)}<span class="u">g</span>${gross(c.batch)}</td><td class="r pc">100%</td><td class="r bk" title="Total formula percentage">${baseAmt > 0 ? NL.fmt(c.batch / baseAmt * 100, 1) + '%' : `<span class="bk-hint">${bset.length ? 'base has no weight' : 'press B to pick a base'}</span>`}</td><td class="r cost" ${costTip ? `title="${costTip}"` : ''}>${NL.money(costAll)}${allStar}</td>${scCells(f => `${NL.fmt(c.batch * f, 2)}<span class="u">g</span>${gross(c.batch, f)}`, { v: costAll, miss: allMissing > 0 }, { html: `${NL.fmt(subFood, 2)}<span class="u">g</span>${gross(subFood)}`, usd: { v: subAll, miss: allMissing > 0 } })}<td></td></tr>${showSc || vp.length ? costRow() : ''}</tfoot>` : ''}</table>
         <div class="rc-sec rc-fw bo ${fwErr[id] ? 'bad' : ''}">
           <label>${isRoot ? 'Final portion weight' : 'Final weight after cooking'} <input class="num" inputmode="decimal" data-fk="fw-${id}" data-fw="${id}" value="${+c.yielded.toFixed(1)}" placeholder="${+c.batch.toFixed(1)}"> g</label>
           <span class="rc-fw-res">from ${NL.fmt(c.batch)} g · <b>Yield ${NL.fmt(NL.yieldPct(a.yieldLoss), 1)}%</b> · Loss ${NL.fmt(+a.yieldLoss || 0, 1)}% (${NL.fmt(c.lossG)} g)</span>
@@ -187,9 +209,9 @@
         </div>
         <div class="rc-add bo">
           <button data-addi="${id}">+ Ingredient</button>
-          <button data-basename="${id}" title="${a.baseName ? 'Rename the base' : 'Name the base (e.g. Total Flour), then press B on each ingredient that belongs to it'}">${a.baseName ? '✎ Rename base' : '+ Base'}</button>
+          <button data-basename="${id}" title="${a.baseName ? 'Rename the base group' : 'Name the base group (e.g. Total Flour), then press B on each ingredient that belongs to it'}">${a.baseName ? '✎ Rename base group' : '+ Base group'}</button>
           <button class="s" data-adds="${id}">＋ New sub-assembly</button>
-          <button class="s" data-addl="${id}">↳ Link existing sub-assembly</button>
+          <button class="s" data-addl="${id}">↳ Link to assembly</button>
           <button class="pk" data-pkadd="${id}" title="Add a packaging item (pouch, film, box…) with its cost">+ Packaging</button>
           <button class="lb" data-lbadd="${id}" title="Add an approximate labor cost (task time × people × hourly rate)">+ Labor</button>
         </div>
@@ -198,7 +220,7 @@
           <li>Add raw ingredients with <b>+ Ingredient</b>, or drag them from the library onto this card.</li>
           <li>Need a component (a sauce, a broth)? Click <b>＋ New sub-assembly</b>. It opens its own linked card where you add its ingredients.</li>
           <li>Type the weight on each row. Batch, yield, % and nutrition update as you type.</li></ol></div>` : ''}
-        ${c.batch > 0 ? `<div class="rc-sec rc-bscale">${scaleControls(id, a, c, sc)}<span class="scl-addrow"><button class="scl-add" data-sclpin="${id}" ${pins.length >= 4 ? 'disabled title="Up to 4 columns. Remove one with × first"' : 'title="Add these numbers as a column, to compare with others"'}>+ Add as column</button><span class="faint">${pins.length} of 4 columns</span><span class="faint scl-note">${flip ? 'scaling side · read-only · press Building to edit' : 'reads your weights · never changes them'}</span></span></div>` : ''}
+        ${c.batch > 0 ? `<div class="rc-sec rc-bscale">${scaleControls(id, a, c, sc)}<span class="scl-addrow"><button class="scl-add" data-sclpin="${id}" ${pins.length >= 4 ? 'disabled title="Up to 4 columns. Remove one with × first"' : pins.some(p => samePin(p, sc)) ? 'disabled title="These numbers are already a column. Change them above to add another"' : 'title="Add these numbers as a column, to compare with others"'}>${pins.length < 4 && pins.some(p => samePin(p, sc)) ? '✓ Already a column' : '+ Add as column'}</button><span class="faint">${pins.length} of 4 columns</span><span class="faint scl-note">${flip ? 'scaling side · read-only · press Building to edit' : 'reads your weights · never changes them'}</span></span></div>` : ''}
         <div class="bo">${nutSection(id, a, c, isRoot)}</div>
         <div class="rc-sec bo">
           <div class="rc-h">Procedure <button class="rc-mini" data-addstep="${id}">+ Step</button></div>
@@ -221,11 +243,12 @@
     const p = NL.price(it.ref.slice(4));
     return p == null ? null : { v: amt / 1000 * p };
   }
-  function costCell(it) {
+  function costCell(it, locked = false) {
     const sid = subIdOf(it.ref), amt = +it.amount || 0;
     if (sid) { const k = cost[sid]; return `<td class="r cost" title="${k ? NL.money(k.perG * 1000) + ' per kg, from its card' : ''}">${k ? NL.money(amt * k.perG) + (k.missing ? '*' : '') : '—'}</td>`; }
     const iid = it.ref.slice(4), p = NL.price(iid), name = NL.esc(NL.ingMap[iid]?.name || iid);
     const tip = p == null ? `No price yet for ${name}. Click to add a price per kg` : `${NL.money(p)} per kg${NL.isSamplePrice(iid) ? ' (sample price)' : ''}. Click to change`;
+    if (locked) return `<td class="r cost" title="${p == null ? `No price yet for ${name}` : `${NL.money(p)} per kg`}. Prices are set on the Building side">${p == null ? '—' : NL.money(amt / 1000 * p)}</td>`;
     return `<td class="r cost"><button class="cost-b ${p == null ? 'none' : NL.isSamplePrice(iid) ? 'sample' : ''}" data-price="${iid}" title="${tip}">${p == null ? 'add $' : NL.money(amt / 1000 * p)}</button></td>`;
   }
 
@@ -240,6 +263,7 @@
     const f = mode === 'base' ? target / baseAmt : c.yielded > 0 ? target / c.yielded : 1;
     return { mode, size, count, target, f, hasBase, baseAmt };
   }
+  const samePin = (p, sc) => p.mode === sc.mode && (sc.mode === 'portion' ? Math.abs(p.size - sc.size) < 0.005 && Math.abs(p.count - sc.count) < 0.005 : Math.abs(p.target - sc.target) < 0.005);
   const pinFactor = (p, c, baseAmt) => p.mode === 'base' ? (baseAmt > 0 ? p.target / baseAmt : 1) : c.yielded > 0 ? p.target / c.yielded : 1;
   // the weight of one portion for a pinned scaling (shown as "portion size" when that column is the active scaling)
   const pinPortion = (p, c, baseAmt) => p.mode === 'portion' ? +p.size : c.yielded * pinFactor(p, c, baseAmt);
@@ -595,6 +619,7 @@
   const commit = () => hist.commit();
   function addItem(id, value, { focus = true } = {}) {
     const a = A(id);
+    if (a.face === 'scale') return NL.toast(`"${a.name}" is showing its Scaling side. Press Building to add to it`);
     if (value === 'new-sub') return newSub(id);
     if (value.startsWith('fav:')) return useFav(value.slice(4), id);
     if (value.startsWith('asm:') && wouldCycle(id, value.slice(4))) return NL.toast('That would create a loop');
@@ -659,9 +684,10 @@
     }
     render(); commit(); goto(nid);
     setTimeout(() => { const t = cardsEl.querySelector(`[data-title="${nid}"]`); t?.focus(); t?.select(); }, 330);
-    NL.toast(view === 'sheet' ? 'Card added at the bottom. Link it from the card that uses it with ↳ Link existing sub-assembly' : 'Card added. Drag its ● onto the assembly that uses it, or add it later with + Ingredient');
+    NL.toast(view === 'sheet' ? 'Card added at the bottom. Link it with ↳ Link to assembly' : 'Card added. Drag its ● onto the assembly that uses it, or add it later with + Ingredient');
   }
   function linkCard(child, parent) {
+    if (A(parent).face === 'scale') return NL.toast(`"${A(parent).name}" is showing its Scaling side. Press Building to link to it`);
     if (A(parent).items.some(it => it.ref === 'asm:' + child)) return NL.toast('Already linked');
     if (wouldCycle(parent, child)) return NL.toast('That would create a loop');
     addItem(parent, 'asm:' + child);
@@ -734,6 +760,7 @@
   }
   function removeFav(fid) { const f = favById(fid); writeFavs(readFavs().filter(x => x.id !== fid)); render(); if (f) NL.toast(`Removed "${f.name}" from favorites`); }
   function useFav(fid, parent) {
+    if (parent && A(parent)?.face === 'scale') return NL.toast(`"${A(parent).name}" is showing its Scaling side. Press Building to add to it`);
     const f = favById(fid); if (!f) return NL.toast('That favorite no longer exists');
     insertCards(f, { parent });
     NL.toast(parent ? `Added "${f.name}" to "${A(parent).name}". Set its weight` : `Added "${f.name}" as a new card`);
@@ -970,10 +997,13 @@
     const subs = Object.entries(S.asm).filter(([sid]) => sid !== S.root && !wouldCycle(id, sid) && !A(id).items.some(it => it.ref === 'asm:' + sid))
       .map(([sid, a]) => ({ value: 'asm:' + sid, label: a.name, color: colorOf(sid), sub: 'sub-assembly' }));
     const favs = { label: '★ Favorites', items: readFavs().map(f => ({ value: 'fav:' + f.id, label: f.name, color: '#f59e0b', sub: 'favorite' })) };
+    // the other direction: put this card into the Final assembly
+    const toFinal = mode === 'link' && hasFinal() && id !== S.root && !A(S.root).items.some(it => it.ref === 'asm:' + id) && !wouldCycle(S.root, id)
+      ? [{ label: 'Add this card to', items: [{ value: 'into:' + S.root, label: A(S.root).name, color: colorOf(S.root), sub: 'final assembly' }] }] : [];
     const groups = mode === 'link'
-      ? [{ label: 'Existing sub-assemblies', items: subs }, favs, { label: 'Create', items: [{ value: 'new-sub', label: '＋ New sub-assembly', color: '#7c5cff', always: true }] }]
+      ? [...toFinal, { label: 'Existing sub-assemblies', items: subs }, favs, { label: 'Create', items: [{ value: 'new-sub', label: '＋ New sub-assembly', color: '#7c5cff', always: true }] }]
       : [{ label: 'Sub-assemblies', items: subs }, favs, ...NL.ingredientGroups()];
-    NL.picker({ x: r.left, y: r.bottom + 4, groups, placeholder: mode === 'link' ? 'Search sub-assemblies…' : 'Search ingredients…', onPick: v => addItem(id, v) });
+    NL.picker({ x: r.left, y: r.bottom + 4, groups, placeholder: mode === 'link' ? 'Search sub-assemblies…' : 'Search ingredients…', onPick: v => v.startsWith('into:') ? linkCard(id, v.slice(5)) : addItem(id, v) });
   }
 
   // ---------- interactions ----------
@@ -1122,7 +1152,7 @@
     if ((b = q('[data-sclpin]'))) {
       const id = b.dataset.sclpin, a = A(id), sc = scaleOf(a, calc[id], parentsOf(id), id === S.root), list = a.scalePins || (a.scalePins = []);
       if (list.length >= 4) return NL.toast('Up to 4 pinned columns. Remove one with × first');
-      if (list.some(p => p.mode === sc.mode && Math.abs(p.target - sc.target) < 0.005)) return NL.toast('That scaling is already pinned');
+      if (list.some(p => samePin(p, sc))) return NL.toast('These numbers are already a column. Change them above to add another');
       list.push({ id: NL.uid('p'), mode: sc.mode, target: sc.target, size: sc.size, count: sc.count });
       render(); saveCur(); hist.sync(); return;
     }
@@ -1148,8 +1178,15 @@
       return;
     }
     if ((b = q('[data-pkdel]'))) { const [id, k] = b.dataset.pkdel.split(':'); A(id).packaging.splice(+k, 1); render(); commit(); return; }
+    if ((b = q('[data-subpull]'))) {
+      const [id, sid] = b.dataset.subpull.split(':'), a = A(id); if (!a) return;
+      a.pulled = a.pulled || {};
+      if (a.pulled[sid]) delete a.pulled[sid]; else a.pulled[sid] = true;
+      if (!Object.keys(a.pulled).length) delete a.pulled;
+      render(); saveCur(); hist.sync(); return;
+    }
     if ((b = q('[data-sclshow]'))) {
-      const [id, k, v] = b.dataset.sclshow.split(':'), a = A(id), t = +k < 0 ? a : a.scalePins?.[+k], key = +k < 0 ? 'scaleShowCost' : 'showCost';
+      const [id, k, v] = b.dataset.sclshow.split(':'), a = A(id), t = k === 'sub' || +k < 0 ? a : a.scalePins?.[+k], key = k === 'sub' ? 'subShowCost' : +k < 0 ? 'scaleShowCost' : 'showCost';
       if (!t) return;
       if (v === '$') t[key] = true; else delete t[key];
       render(); saveCur(); hist.sync(); return;
@@ -1219,6 +1256,11 @@
   $('#undo').onclick = () => hist.undo();
   $('#redo').onclick = () => hist.redo();
   $('#fit').onclick = () => { useSide('left'); vp.fit(bounds()); };
+  // board: show or hide the link lines between cards (remembered per browser)
+  { const btn = $('#linesBtn'); let off = false; try { off = localStorage.getItem('nlv3_hide_links') === '1'; } catch { }
+    const apply = () => { document.body.classList.toggle('hide-links', off); btn.classList.toggle('off', off); btn.textContent = off ? '⤳ Lines off' : '⤳ Lines'; btn.setAttribute('aria-pressed', String(!off)); };
+    btn.onclick = () => { off = !off; try { localStorage.setItem('nlv3_hide_links', off ? '1' : '0'); } catch { } apply(); };
+    apply(); }
   $('#arrange').onclick = () => { useSide('left'); arrange(); commit(); vp.fit(bounds()); };
   $('#zin').onclick = () => vp.zoom(1.2);
   $('#zout').onclick = () => vp.zoom(1 / 1.2);
