@@ -19,8 +19,5 @@ http.createServer((req, res) => {
     res.end(data);
   });
 }).listen(PORT, () => {
-  console.log(`NutriLabel UI Lab running:`);
-  console.log(`  Home      http://localhost:${PORT}/`);
-  console.log(`  Layout A  http://localhost:${PORT}/node-graph/`);
-  console.log(`  Layout B  http://localhost:${PORT}/recipe-cards/`);
+  console.log(`NutriLabel Recipe Builder v3 running at http://localhost:${PORT}/`);
 });
